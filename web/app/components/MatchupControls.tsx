@@ -15,7 +15,7 @@ export default function MatchupControls({
   seasons: Opt[];
   situations: Opt[];
   teams: string[];
-  current: { season: string; situation: string; a: string; b: string };
+  current: { season: string; situation: string; a: string; b: string; ball: string };
 }) {
   const router = useRouter();
   const [a, setA] = useState(current.a);
@@ -25,7 +25,7 @@ export default function MatchupControls({
 
   const loaded = Boolean(current.a && current.b);
   const nav = (p: { a: string; b: string; season: string; situation: string }) =>
-    router.push(`/?${new URLSearchParams(p)}`);
+    router.push(`/?${new URLSearchParams({ ...p, ball: current.ball || "a" })}`);
 
   function pickSit(v: string) {
     setSituation(v);
