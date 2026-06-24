@@ -139,3 +139,75 @@ export async function getTeamProfile(
     where tm.league_id = ${league} and tm.team = ${team} and tm.season = ${season}
     order by abs(tm.zscore) desc nulls last`;
 }
+
+// ---- matchups ------------------------------------------------------------
+
+export async function getTeams(league: string, season: number): Promise<string[]> {
+  const rows = await sql<{ team: string }[]>`
+    select distinct team from team_metrics
+    where league_id = ${league} and season = ${season} order by team`;
+  return rows.map((r) => r.team);
+}
+
+export type SlateGame = {
+  game_id: string;
+  season: number;
+  week: number | null;
+  start_time: string | null;
+  home_team: string;
+  away_team: string;
+};
+
+// The earliest scheduled week in the latest season that has scheduled games.
+export async function getUpcomingSlate(
+  league: string,
+): Promise<{ season: number; week: number | null; games: SlateGame[] } | null> {
+  const head = await sql<{ season: number; week: number | null }[]>`
+    select season, min(week) as week from game
+    where league_id = ${league} and status = 'scheduled'
+      and season = (select max(season) from game
+                    where league_id = ${league} and status = 'scheduled')
+    group by season`;
+  if (head.length === 0) return null;
+  const { season, week } = head[0];
+  const games = await sql<SlateGame[]>`
+    select game_id, season, week, start_time, home_team, away_team from game
+    where league_id = ${league} and status = 'scheduled' and season = ${season}
+      and week is not distinct from ${week}
+    order by start_time nulls last, home_team`;
+  return { season, week, games };
+}
+
+export type MatchupRow = {
+  team: string;
+  metric_id: string;
+  display_name: string;
+  unit: string;
+  higher_is: string;
+  value: number | null;
+  numerator: number | null;
+  sample_size: number;
+  zscore: number | null;
+  rank: number | null;
+  league_n: number | null;
+  is_tail: boolean;
+  tail_side: "high" | "low" | null;
+  low_sample: boolean;
+};
+
+export async function getMatchupMetrics(
+  league: string,
+  season: number,
+  teamA: string,
+  teamB: string,
+  situation: string,
+): Promise<MatchupRow[]> {
+  return sql<MatchupRow[]>`
+    select tm.team, tm.metric_id, mc.display_name, mc.unit, mc.higher_is,
+           tm.value, tm.numerator, tm.sample_size, tm.zscore, tm.rank, tm.league_n,
+           tm.is_tail, tm.tail_side, tm.low_sample
+    from team_metrics tm
+    join metric_catalog mc on mc.metric_id = tm.metric_id
+    where tm.league_id = ${league} and tm.season = ${season}
+      and tm.situation_key = ${situation} and tm.team = any(${[teamA, teamB]})`;
+}

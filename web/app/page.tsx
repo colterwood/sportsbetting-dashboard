@@ -1,22 +1,23 @@
 import {
   getLeagues,
   getSeasons,
-  getMetrics,
   getSituations,
-  getDistribution,
-  getTeamMetrics,
+  getTeams,
+  getUpcomingSlate,
+  getMatchupMetrics,
 } from "@/lib/queries";
-import { formatValue, pick } from "@/lib/format";
-import Controls from "./components/Controls";
-import DistributionCurve from "./components/DistributionCurve";
-import PercentileTool from "./components/PercentileTool";
-import TailTable from "./components/TailTable";
+import { pick } from "@/lib/format";
+import { PAIRED_FAMILIES, familyLabel } from "@/lib/matchup";
+import MatchupControls from "./components/MatchupControls";
+import MatchupComparison from "./components/MatchupComparison";
+import FamilyChips from "./components/FamilyChips";
+import Slate from "./components/Slate";
 
 export const dynamic = "force-dynamic";
 
 type SP = Promise<{ [k: string]: string | string[] | undefined }>;
 
-export default async function Page({ searchParams }: { searchParams: SP }) {
+export default async function Home({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const q = (k: string) => {
     const v = sp[k];
@@ -24,91 +25,76 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
   };
 
   const leagues = await getLeagues();
-  if (leagues.length === 0) {
-    return <Empty msg="No active leagues yet — run the analytics pipeline (load_registry + build_metrics)." />;
-  }
-  const league = pick(q("league"), leagues.map((l) => l.league_id), leagues[0].league_id);
+  if (leagues.length === 0) return <Empty msg="No active leagues yet — run the analytics pipeline." />;
+  const league = leagues[0].league_id; // matchups are single-league for v1 (NCAAF)
 
-  const [seasons, metrics, situations] = await Promise.all([
+  const [seasons, situations, slate] = await Promise.all([
     getSeasons(league),
-    getMetrics(league),
     getSituations(league),
+    getUpcomingSlate(league),
   ]);
-  if (seasons.length === 0 || metrics.length === 0) {
-    return <Empty msg="No metrics computed for this league yet — run build_metrics.py." />;
-  }
+  if (seasons.length === 0) return <Empty msg="No metrics computed yet — run build_metrics.py." />;
 
   const season = Number(pick(q("season"), seasons.map(String), String(seasons[0])));
-  const metric = pick(q("metric"), metrics.map((m) => m.metric_id), metrics[0].metric_id);
   const situation = pick(
     q("situation"),
     situations.map((s) => s.situation_key),
     situations.some((s) => s.situation_key === "game") ? "game" : situations[0].situation_key,
   );
-  const meta = metrics.find((m) => m.metric_id === metric)!;
   const situationName = situations.find((s) => s.situation_key === situation)?.display_name;
 
-  const [dist, teams] = await Promise.all([
-    getDistribution(league, season, metric, situation),
-    getTeamMetrics(league, season, metric, situation),
-  ]);
+  const teams = await getTeams(league, season);
+  const aRaw = q("a");
+  const bRaw = q("b");
+  const a = aRaw && teams.includes(aRaw) ? aRaw : "";
+  const b = bRaw && teams.includes(bRaw) ? bRaw : "";
+
+  const famParam = q("families");
+  const fromParam = famParam ? famParam.split(",").filter((f) => PAIRED_FAMILIES.includes(f)) : [];
+  const selectedFamilies = fromParam.length ? fromParam : PAIRED_FAMILIES;
+
+  const rows = a && b ? await getMatchupMetrics(league, season, a, b, situation) : [];
 
   return (
     <div className="space-y-5">
-      <Controls
-        leagues={leagues.map((l) => ({ value: l.league_id, label: l.display_name }))}
-        seasons={seasons.map((s) => ({ value: String(s), label: String(s) }))}
-        metrics={metrics.map((m) => ({ value: m.metric_id, label: m.display_name }))}
-        situations={situations.map((s) => ({ value: s.situation_key, label: s.display_name }))}
-        current={{ league, season: String(season), metric, situation }}
-      />
-
       <div>
-        <h1 className="text-lg font-semibold text-slate-100">{meta.display_name}</h1>
+        <h1 className="text-lg font-semibold text-slate-100">Matchups</h1>
         <p className="text-sm text-slate-400">
-          {situationName} · {season} ·{" "}
-          {dist ? (
-            <>
-              {dist.n_teams} teams · avg {formatValue(meta.unit, dist.mean)} · range{" "}
-              {formatValue(meta.unit, dist.val_min)}–{formatValue(meta.unit, dist.val_max)}
-            </>
-          ) : (
-            "no data"
-          )}
+          Offense-vs-defense edges from {season} form. Pick a game from the slate or build one.
         </p>
       </div>
 
-      {dist ? (
-        <>
-          <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-3">
-            <DistributionCurve dist={dist} teams={teams} unit={meta.unit} higherIs={meta.higher_is} />
-            <Legend />
-          </div>
-          <PercentileTool histogram={dist.histogram} unit={meta.unit} />
-          <TailTable teams={teams} unit={meta.unit} higherIs={meta.higher_is} league={league} season={season} />
-        </>
-      ) : (
-        <Empty msg="No distribution for this combination." />
-      )}
-    </div>
-  );
-}
+      <MatchupControls
+        seasons={seasons.map((s) => ({ value: String(s), label: String(s) }))}
+        situations={situations.map((s) => ({ value: s.situation_key, label: s.display_name }))}
+        teams={teams}
+        current={{ season: String(season), situation, a, b }}
+      />
 
-function Legend() {
-  const items = [
-    { c: "#34d399", t: "Edge — good extreme" },
-    { c: "#fb7185", t: "Fade — bad extreme" },
-    { c: "#fbbf24", t: "Neutral outlier" },
-    { c: "#64748b", t: "Field" },
-  ];
-  return (
-    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 px-1 text-[11px] text-slate-400">
-      {items.map((i) => (
-        <span key={i.t} className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ background: i.c }} />
-          {i.t}
-        </span>
-      ))}
+      {a && b ? (
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold text-slate-100">
+            {a} <span className="font-normal text-slate-500">vs</span> {b}{" "}
+            <span className="text-sm font-normal text-slate-400">· {situationName} · {season}</span>
+          </h2>
+          <FamilyChips
+            families={PAIRED_FAMILIES.map((f) => ({ family: f, label: familyLabel(f) }))}
+            selected={selectedFamilies}
+            current={{ a, b, season: String(season), situation }}
+          />
+          {rows.length ? (
+            <MatchupComparison rows={rows} teamA={a} teamB={b} families={selectedFamilies} />
+          ) : (
+            <Empty msg="No metric data for one of these teams in this season." />
+          )}
+        </section>
+      ) : (
+        <p className="rounded-lg border border-dashed border-slate-700 px-4 py-3 text-sm text-slate-400">
+          Pick two teams above, or tap a game in the slate below.
+        </p>
+      )}
+
+      {slate && <Slate slate={slate} metricsSeason={season} />}
     </div>
   );
 }

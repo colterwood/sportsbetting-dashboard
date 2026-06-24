@@ -17,10 +17,16 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body className="flex min-h-full flex-col">
         <header className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/70 backdrop-blur">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-            <Link href="/" className="font-semibold tracking-tight text-slate-100">
-              Outlier<span className="text-sky-400">Board</span>
-            </Link>
-            <span className="text-[11px] text-slate-500">NCAAF · more leagues soon</span>
+            <div className="flex items-center gap-5">
+              <Link href="/" className="font-semibold tracking-tight text-slate-100">
+                Outlier<span className="text-sky-400">Board</span>
+              </Link>
+              <nav className="flex items-center gap-4 text-sm">
+                <Link href="/" className="text-slate-300 hover:text-slate-100">Matchups</Link>
+                <Link href="/explore" className="text-slate-300 hover:text-slate-100">Explorer</Link>
+              </nav>
+            </div>
+            <span className="text-[11px] text-slate-500">NCAAF</span>
           </div>
         </header>
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-5">{children}</main>

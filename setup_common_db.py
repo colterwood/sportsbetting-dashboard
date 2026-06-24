@@ -71,6 +71,7 @@ DDL = [
     "create index if not exists idx_game_date   on game (league_id, game_date)",
     "create index if not exists idx_game_status on game (status)",
     "create index if not exists idx_game_start  on game (start_time)",
+    "alter table game add column if not exists week integer",
 
     # ---- declarative situation catalog (when to measure) -------------------
     """
