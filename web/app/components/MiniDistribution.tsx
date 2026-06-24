@@ -7,6 +7,7 @@ type Bin = { lo: number; hi: number; count: number };
 export default function MiniDistribution({
   histogram,
   mean,
+  median,
   valMin,
   valMax,
   value,
@@ -16,6 +17,7 @@ export default function MiniDistribution({
 }: {
   histogram: Bin[];
   mean: number;
+  median: number;
   valMin: number;
   valMax: number;
   value: number | null;
@@ -64,9 +66,11 @@ export default function MiniDistribution({
           const h = (b.count / maxC) * (base - top);
           return <rect key={i} x={x} y={base - h} width={w} height={h} fill="#334155" opacity={0.6} />;
         })}
-        {/* league average */}
-        <line x1={sx(mean)} x2={sx(mean)} y1={top} y2={base} stroke="#64748b" strokeWidth={1} strokeDasharray="2 3" />
-        <text x={sx(mean)} y={base + 9} fill="#64748b" fontSize={9} textAnchor="middle">avg</text>
+        {/* mean (faint, dashed) — its gap from the median shows the skew */}
+        <line x1={sx(mean)} x2={sx(mean)} y1={top + 8} y2={base} stroke="#475569" strokeWidth={1} strokeDasharray="2 3" />
+        {/* median = robust centre (half the teams on each side) */}
+        <line x1={sx(median)} x2={sx(median)} y1={top} y2={base} stroke="#94a3b8" strokeWidth={1.25} />
+        <text x={sx(median)} y={base + 9} fill="#94a3b8" fontSize={9} textAnchor="middle">med</text>
         {/* this team */}
         <line x1={sx(value)} x2={sx(value)} y1={top - 4} y2={base} stroke={color} strokeWidth={2} />
         <circle cx={sx(value)} cy={top - 4} r={2.6} fill={color} />

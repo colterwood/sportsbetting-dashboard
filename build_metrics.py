@@ -22,7 +22,7 @@ from sqlalchemy import text
 
 from db import engine_from_env
 
-TAIL_Z = 1.5     # |z| at/above which a team is flagged an outlier (a "tail")
+ROBUST_Z = 2.0   # |modified z| (median/MAD, skew-robust) for a true-outlier "tail". Tunable.
 MIN_GAMES = 3    # a team needs this many games in the dataset to join the curve /
                  # be tail-flagged. Excludes 1-2 game FCS "cameo" opponents whose
                  # tiny samples would otherwise pollute the tails on any metric.
@@ -165,6 +165,7 @@ def build(leagues: list[str] | None = None, seasons: list[int] | None = None) ->
                                     enumerate(qual["value"].sort_values(ascending=False).index)}
                         p10, p25, p50, p75, p90 = (float(x) for x in
                                                    np.percentile(vals_sorted, [10, 25, 50, 75, 90]))
+                        mad = float(np.median(np.abs(vals_sorted - p50)))  # median abs deviation
                         dist_rows.append({
                             "league_id": league_id, "season": int(season),
                             "metric_id": metric["metric_id"], "situation_key": situation_key,
@@ -183,9 +184,16 @@ def build(leagues: list[str] | None = None, seasons: list[int] | None = None) ->
                             z = 0.0
                         else:
                             z = None
+                        # skew-robust outlier score: modified z via median + MAD
+                        if has_dist and mad > 0:
+                            rz = 0.6745 * (val - p50) / mad
+                        elif has_dist:
+                            rz = 0.0
+                        else:
+                            rz = None
                         pctile = (float(np.searchsorted(vals_sorted, val, side="right")) / n * 100.0
                                   if has_dist else None)
-                        is_tail = bool(is_qual and z is not None and abs(z) >= TAIL_Z)
+                        is_tail = bool(is_qual and rz is not None and abs(rz) >= ROBUST_Z)
                         if is_tail:
                             n_tail += 1
                         tm_rows.append({
@@ -198,7 +206,7 @@ def build(leagues: list[str] | None = None, seasons: list[int] | None = None) ->
                             "zscore": (round(z, 4) if z is not None else None),
                             "rank": (rank_map.get(team) if is_qual and has_dist else None),
                             "is_tail": is_tail,
-                            "tail_side": ("high" if z and z > 0 else "low") if is_tail else None,
+                            "tail_side": ("high" if rz and rz > 0 else "low") if is_tail else None,
                             "low_sample": (not is_qual),
                         })
 

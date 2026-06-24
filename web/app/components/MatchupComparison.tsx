@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import type { MatchupRow, MiniDist } from "@/lib/queries";
-import { familyOf, sideOf, familyLabel, goodRank, scoringFavor } from "@/lib/matchup";
+import { familyOf, sideOf, familyLabel, goodRank, cellColor } from "@/lib/matchup";
 import { formatValue } from "@/lib/format";
 import MiniDistribution from "./MiniDistribution";
 
@@ -70,6 +70,7 @@ export default function MatchupComparison({
                           <MiniDistribution
                             histogram={offDist.histogram}
                             mean={offDist.mean}
+                            median={offDist.p50}
                             valMin={offDist.val_min}
                             valMax={offDist.val_max}
                             value={off.value}
@@ -84,6 +85,7 @@ export default function MatchupComparison({
                           <MiniDistribution
                             histogram={defDist.histogram}
                             mean={defDist.mean}
+                            median={defDist.p50}
                             valMin={defDist.val_min}
                             valMax={defDist.val_max}
                             value={def.value}
@@ -111,7 +113,7 @@ function Cell({ row }: { row: MatchupRow | null }) {
   if (!row) return <span className="text-slate-600">—</span>;
   const isRate = row.unit === "rate";
   const gr = goodRank(row.higher_is, row.rank, row.league_n);
-  const q = scoringFavor(row.higher_is, sideOf(row.metric_id), row.rank, row.league_n);
+  const q = cellColor(row.higher_is, sideOf(row.metric_id), row.is_tail, row.tail_side);
   const rankCls = q === "good" ? "text-emerald-300" : q === "bad" ? "text-rose-300" : "text-slate-500";
   return (
     <span className="whitespace-nowrap tabular-nums">

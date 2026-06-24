@@ -216,6 +216,7 @@ export type MiniDist = {
   metric_id: string;
   histogram: HistBin[];
   mean: number;
+  p50: number;
   val_min: number;
   val_max: number;
 };
@@ -228,7 +229,7 @@ export async function getMatchupDistributions(
 ): Promise<MiniDist[]> {
   if (metricIds.length === 0) return [];
   return sql<MiniDist[]>`
-    select metric_id, histogram, mean, val_min, val_max
+    select metric_id, histogram, mean, p50, val_min, val_max
     from metric_distribution
     where league_id = ${league} and season = ${season} and situation_key = ${situation}
       and metric_id = any(${metricIds})`;

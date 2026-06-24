@@ -63,25 +63,21 @@ export function goodRank(higherIs: string, rank: number | null, leagueN: number 
 
 export type Quality = "good" | "bad" | "neutral";
 
-// Color by whether the value FAVORS OFFENSE/scoring in this matchup (betting lens),
-// NOT by whether the team is "good":
-//   green ("good")  = offense success high  OR  defense leaky (allows a lot)
-//   red   ("bad")   = offense success low   OR  defense stingy
-// Uses the raw rank (by value desc). Neutral metrics get no color.
-export function scoringFavor(
+// Color a cell ONLY when the team is a true outlier (is_tail = robust median/MAD
+// modified z >= threshold, set in build_metrics), oriented by whether that outlier
+// FAVORS OFFENSE/scoring in this matchup (betting lens):
+//   green ("good") = offense outlier-high (elite) OR defense outlier-high (leaky)
+//   red   ("bad")  = offense outlier-low (weak)   OR defense outlier-low (stingy)
+// Non-outliers and neutral metrics get no color.
+export function cellColor(
   higherIs: string,
   side: "off" | "def" | null,
-  rank: number | null,
-  leagueN: number | null,
+  isTail: boolean,
+  tailSide: "high" | "low" | null,
 ): Quality {
-  if (higherIs === "neutral" || side == null || rank == null || leagueN == null || leagueN < 4)
-    return "neutral";
-  // does a HIGH raw value favor the offense in this matchup?
+  if (!isTail || tailSide == null || side == null || higherIs === "neutral") return "neutral";
   const favorableWhenHigh =
     (side === "off" && higherIs === "good_for_team") || (side === "def" && higherIs === "bad_for_team");
-  const favRank = favorableWhenHigh ? rank : leagueN + 1 - rank; // 1 = most favorable for offense
-  const p = favRank / leagueN;
-  if (p <= 0.25) return "good";
-  if (p >= 0.75) return "bad";
-  return "neutral";
+  const high = tailSide === "high";
+  return high === favorableWhenHigh ? "good" : "bad";
 }
