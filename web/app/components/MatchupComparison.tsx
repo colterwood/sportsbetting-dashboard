@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import type { MatchupRow, MiniDist } from "@/lib/queries";
-import { familyOf, sideOf, familyLabel, goodRank, rankQuality } from "@/lib/matchup";
+import { familyOf, sideOf, familyLabel, goodRank, scoringFavor } from "@/lib/matchup";
 import { formatValue } from "@/lib/format";
 import MiniDistribution from "./MiniDistribution";
 
@@ -111,7 +111,7 @@ function Cell({ row }: { row: MatchupRow | null }) {
   if (!row) return <span className="text-slate-600">—</span>;
   const isRate = row.unit === "rate";
   const gr = goodRank(row.higher_is, row.rank, row.league_n);
-  const q = rankQuality(row.higher_is, gr, row.league_n);
+  const q = scoringFavor(row.higher_is, sideOf(row.metric_id), row.rank, row.league_n);
   const rankCls = q === "good" ? "text-emerald-300" : q === "bad" ? "text-rose-300" : "text-slate-500";
   return (
     <span className="whitespace-nowrap tabular-nums">

@@ -62,9 +62,25 @@ export function goodRank(higherIs: string, rank: number | null, leagueN: number 
 }
 
 export type Quality = "good" | "bad" | "neutral";
-export function rankQuality(higherIs: string, gRank: number | null, leagueN: number | null): Quality {
-  if (higherIs === "neutral" || gRank == null || leagueN == null || leagueN < 4) return "neutral";
-  const p = gRank / leagueN;
+
+// Color by whether the value FAVORS OFFENSE/scoring in this matchup (betting lens),
+// NOT by whether the team is "good":
+//   green ("good")  = offense success high  OR  defense leaky (allows a lot)
+//   red   ("bad")   = offense success low   OR  defense stingy
+// Uses the raw rank (by value desc). Neutral metrics get no color.
+export function scoringFavor(
+  higherIs: string,
+  side: "off" | "def" | null,
+  rank: number | null,
+  leagueN: number | null,
+): Quality {
+  if (higherIs === "neutral" || side == null || rank == null || leagueN == null || leagueN < 4)
+    return "neutral";
+  // does a HIGH raw value favor the offense in this matchup?
+  const favorableWhenHigh =
+    (side === "off" && higherIs === "good_for_team") || (side === "def" && higherIs === "bad_for_team");
+  const favRank = favorableWhenHigh ? rank : leagueN + 1 - rank; // 1 = most favorable for offense
+  const p = favRank / leagueN;
   if (p <= 0.25) return "good";
   if (p >= 0.75) return "bad";
   return "neutral";
