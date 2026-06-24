@@ -5,6 +5,7 @@ import {
   getTeams,
   getUpcomingSlate,
   getMatchupMetrics,
+  getMatchupDistributions,
 } from "@/lib/queries";
 import { pick } from "@/lib/format";
 import { TOP_FAMILIES, PAIRED_FAMILIES, familyLabel } from "@/lib/matchup";
@@ -59,6 +60,8 @@ export default async function Home({ searchParams }: { searchParams: SP }) {
   const selectedFamilies = [...TOP_FAMILIES, ...selectedExtras];
 
   const rows = a && b ? await getMatchupMetrics(league, season, a, b, situation) : [];
+  const metricIds = selectedFamilies.flatMap((f) => [`${f}_off`, `${f}_def`]);
+  const dists = a && b ? await getMatchupDistributions(league, season, situation, metricIds) : [];
   const ctx = { a, b, season: String(season), situation, ball };
 
   return (
@@ -111,6 +114,7 @@ export default async function Home({ searchParams }: { searchParams: SP }) {
                 defenseTeam={defenseTeam}
                 rows={rows}
                 families={selectedFamilies}
+                dists={dists}
               />
             </div>
           ) : (

@@ -1,24 +1,39 @@
-import type { MatchupRow } from "@/lib/queries";
+"use client";
+
+import { Fragment, useState } from "react";
+import type { MatchupRow, MiniDist } from "@/lib/queries";
 import { familyOf, sideOf, familyLabel, goodRank, rankQuality } from "@/lib/matchup";
 import { formatValue } from "@/lib/format";
+import MiniDistribution from "./MiniDistribution";
 
-// One possession: the offense team's offensive metrics vs the defense team's
-// defensive (allowed) metrics. Each cell shows value, (made/opportunities) for
-// rates, and the team's overall rank (1 = best), color-coded.
+// One possession: ball-carrying team's offense vs the opponent's defense. Each
+// row taps open to a mini league-distribution with each team marked.
 export default function MatchupComparison({
   offenseTeam,
   defenseTeam,
   rows,
   families,
+  dists,
 }: {
   offenseTeam: string;
   defenseTeam: string;
   rows: MatchupRow[];
   families: string[];
+  dists: MiniDist[];
 }) {
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggle = (f: string) =>
+    setOpen((s) => {
+      const n = new Set(s);
+      if (n.has(f)) n.delete(f);
+      else n.add(f);
+      return n;
+    });
+
   const idx = new Map<string, MatchupRow>();
   for (const r of rows) idx.set(`${r.team}|${familyOf(r.metric_id)}|${sideOf(r.metric_id)}`, r);
   const get = (t: string, f: string, s: "off" | "def") => idx.get(`${t}|${f}|${s}`) ?? null;
+  const distOf = new Map(dists.map((d) => [d.metric_id, d]));
 
   return (
     <div className="overflow-hidden rounded-lg border border-slate-800">
@@ -31,13 +46,61 @@ export default function MatchupComparison({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800">
-          {families.map((f) => (
-            <tr key={f}>
-              <td className="px-2 py-1.5 text-slate-300">{familyLabel(f)}</td>
-              <td className="px-2 py-1.5 text-right"><Cell row={get(offenseTeam, f, "off")} /></td>
-              <td className="px-2 py-1.5 text-right"><Cell row={get(defenseTeam, f, "def")} /></td>
-            </tr>
-          ))}
+          {families.map((f) => {
+            const off = get(offenseTeam, f, "off");
+            const def = get(defenseTeam, f, "def");
+            const isOpen = open.has(f);
+            const offDist = off ? distOf.get(off.metric_id) : undefined;
+            const defDist = def ? distOf.get(def.metric_id) : undefined;
+            return (
+              <Fragment key={f}>
+                <tr onClick={() => toggle(f)} className="cursor-pointer hover:bg-slate-800/40">
+                  <td className="px-2 py-1.5 text-slate-300">
+                    <span className="mr-1 inline-block text-[9px] text-slate-600">{isOpen ? "▼" : "▸"}</span>
+                    {familyLabel(f)}
+                  </td>
+                  <td className="px-2 py-1.5 text-right"><Cell row={off} /></td>
+                  <td className="px-2 py-1.5 text-right"><Cell row={def} /></td>
+                </tr>
+                {isOpen && (
+                  <tr className="bg-slate-900/40">
+                    <td colSpan={3} className="px-3 py-3">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {off && offDist ? (
+                          <MiniDistribution
+                            histogram={offDist.histogram}
+                            mean={offDist.mean}
+                            valMin={offDist.val_min}
+                            valMax={offDist.val_max}
+                            value={off.value}
+                            unit={off.unit}
+                            color="#34d399"
+                            caption={`${offenseTeam} — offense`}
+                          />
+                        ) : (
+                          <span className="text-xs text-slate-600">no distribution</span>
+                        )}
+                        {def && defDist ? (
+                          <MiniDistribution
+                            histogram={defDist.histogram}
+                            mean={defDist.mean}
+                            valMin={defDist.val_min}
+                            valMax={defDist.val_max}
+                            value={def.value}
+                            unit={def.unit}
+                            color="#fb7185"
+                            caption={`${defenseTeam} — defense`}
+                          />
+                        ) : (
+                          <span className="text-xs text-slate-600">no distribution</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
