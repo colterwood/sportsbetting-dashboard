@@ -40,6 +40,7 @@ SITUATIONS = [
 # numer/denom are arithmetic expressions over quarter_log columns. denom null =>
 # simple mean of numer. higher_is frames a tail as bet-for/against for the team.
 _QL = "quarter_log"
+_DL = "drive_log"
 METRICS = [
     # Offense
     {"metric_id": "scoring_drive_rate_off", "display_name": "Scoring-Drive Rate (Off)",
@@ -112,12 +113,38 @@ METRICS = [
     {"metric_id": "yards_per_run_def", "display_name": "Yards / Run Allowed (Def)",
      "source_table": _QL, "side": "defense", "numer_expr": "yards_per_run_against * rush_plays_against",
      "denom_expr": "rush_plays_against", "unit": "yards", "higher_is": "bad_for_team", "min_sample": 25, "sort_order": 33},
-    {"metric_id": "pass_rate_off", "display_name": "Pass / Rush (Off)",
+    {"metric_id": "pass_rate_off", "display_name": "Pass Rate (Off)",
      "source_table": _QL, "side": "offense", "numer_expr": "pass_plays_for",
      "denom_expr": "plays_for", "unit": "rate", "higher_is": "neutral", "min_sample": 40, "sort_order": 34},
-    {"metric_id": "pass_rate_def", "display_name": "Pass / Rush Faced (Def)",
+    {"metric_id": "pass_rate_def", "display_name": "Pass Rate Faced (Def)",
      "source_table": _QL, "side": "defense", "numer_expr": "pass_plays_against",
      "denom_expr": "plays_against", "unit": "rate", "higher_is": "neutral", "min_sample": 40, "sort_order": 35},
+    # Yards per drive
+    {"metric_id": "yards_per_drive_off", "display_name": "Yards / Drive (Off)",
+     "source_table": _QL, "side": "offense", "numer_expr": "avg_yards_for * drives_for",
+     "denom_expr": "drives_for", "unit": "yards", "higher_is": "good_for_team", "min_sample": 15, "sort_order": 36},
+    {"metric_id": "yards_per_drive_def", "display_name": "Yards / Drive Allowed (Def)",
+     "source_table": _QL, "side": "defense", "numer_expr": "avg_yards_against * drives_against",
+     "denom_expr": "drives_against", "unit": "yards", "higher_is": "bad_for_team", "min_sample": 15, "sort_order": 37},
+    # Average starting field position, expressed as own yard line (100 - yards_to_goal),
+    # so higher = better field position. Offense = where we start; Defense = where we let opp start.
+    {"metric_id": "avg_start_pos_off", "display_name": "Avg Start (Off, own yd line)",
+     "source_table": _QL, "side": "offense", "numer_expr": "(100 - avg_start_pos_for) * drives_for",
+     "denom_expr": "drives_for", "unit": "yards", "higher_is": "good_for_team", "min_sample": 15, "sort_order": 38},
+    {"metric_id": "avg_start_pos_def", "display_name": "Avg Start Allowed (Def, opp own yd line)",
+     "source_table": _QL, "side": "defense", "numer_expr": "(100 - avg_start_pos_against) * drives_against",
+     "denom_expr": "drives_against", "unit": "yards", "higher_is": "bad_for_team", "min_sample": 15, "sort_order": 39},
+    # Adjusted starting field position: per-drive mean (own yd line) with each team's
+    # outlier drives removed (median/MAD, TRIM_Z) — "average minus outliers". Over
+    # drive_log: offense groups by team; defense-allowed groups by opponent.
+    {"metric_id": "adj_start_pos_off", "display_name": "Adj Start (Off, outliers removed)",
+     "source_table": _DL, "side": "offense", "numer_expr": "100 - start_position",
+     "denom_expr": None, "unit": "yards", "higher_is": "good_for_team", "min_sample": 30,
+     "sort_order": 40, "agg": "trimmed_mean", "group_col": "team"},
+    {"metric_id": "adj_start_pos_def", "display_name": "Adj Start Allowed (Def, outliers removed)",
+     "source_table": _DL, "side": "defense", "numer_expr": "100 - start_position",
+     "denom_expr": None, "unit": "yards", "higher_is": "bad_for_team", "min_sample": 30,
+     "sort_order": 41, "agg": "trimmed_mean", "group_col": "opponent"},
 ]
 
 _SPORT_UPSERT = text("""
@@ -138,10 +165,12 @@ _SIT_UPSERT = text("""
 _METRIC_UPSERT = text("""
     insert into metric_catalog
       (metric_id, display_name, sport_id, source_table, side,
-       numer_expr, denom_expr, unit, higher_is, min_sample, sort_order, is_active)
+       numer_expr, denom_expr, unit, higher_is, min_sample, sort_order, is_active,
+       agg, group_col)
     values
       (:metric_id, :display_name, :sport_id, :source_table, :side,
-       :numer_expr, :denom_expr, :unit, :higher_is, :min_sample, :sort_order, true)
+       :numer_expr, :denom_expr, :unit, :higher_is, :min_sample, :sort_order, true,
+       :agg, :group_col)
     on conflict (metric_id) do update set
       display_name = excluded.display_name,
       source_table = excluded.source_table,
@@ -151,7 +180,9 @@ _METRIC_UPSERT = text("""
       unit         = excluded.unit,
       higher_is    = excluded.higher_is,
       min_sample   = excluded.min_sample,
-      sort_order   = excluded.sort_order
+      sort_order   = excluded.sort_order,
+      agg          = excluded.agg,
+      group_col    = excluded.group_col
 """)
 
 
@@ -166,7 +197,7 @@ def main() -> None:
                 "sort_order": s["sort_order"],
             })
         for m in METRICS:
-            conn.execute(_METRIC_UPSERT, {"sport_id": SPORT_ID, **m})
+            conn.execute(_METRIC_UPSERT, {"sport_id": SPORT_ID, "agg": "ratio", "group_col": None, **m})
     eng.dispose()
     print(f"seeded {len(SITUATIONS)} situations + {len(METRICS)} metrics for sport '{SPORT_ID}'")
 

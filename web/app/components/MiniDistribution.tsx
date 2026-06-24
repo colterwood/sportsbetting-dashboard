@@ -27,7 +27,7 @@ export default function MiniDistribution({
 }) {
   if (!histogram?.length || value == null) return null;
   const W = 320,
-    H = 64,
+    H = 74,
     padL = 4,
     padR = 4,
     top = 8,
@@ -71,6 +71,9 @@ export default function MiniDistribution({
         {/* median = robust centre (half the teams on each side) */}
         <line x1={sx(median)} x2={sx(median)} y1={top} y2={base} stroke="#94a3b8" strokeWidth={1.25} />
         <text x={sx(median)} y={base + 9} fill="#94a3b8" fontSize={9} textAnchor="middle">med</text>
+        <text x={sx(median)} y={base + 19} fill="#cbd5e1" fontSize={8.5} textAnchor="middle">
+          {formatValue(unit, median)}
+        </text>
         {/* this team */}
         <line x1={sx(value)} x2={sx(value)} y1={top - 4} y2={base} stroke={color} strokeWidth={2} />
         <circle cx={sx(value)} cy={top - 4} r={2.6} fill={color} />

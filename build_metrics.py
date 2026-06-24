@@ -26,6 +26,11 @@ ROBUST_Z = 2.0   # |modified z| (median/MAD, skew-robust) for a true-outlier "ta
 MIN_GAMES = 3    # a team needs this many games in the dataset to join the curve /
                  # be tail-flagged. Excludes 1-2 game FCS "cameo" opponents whose
                  # tiny samples would otherwise pollute the tails on any metric.
+TRIM_Z = 3.5     # within-team |modified z| (median/MAD) above which a single row
+                 # (e.g. a drive) is an outlier and dropped before a 'trimmed_mean'
+                 # metric averages — i.e. "the average minus the outliers". 3.5 is the
+                 # textbook modified-z outlier cutoff (Iglewicz–Hoaglin); raise to trim
+                 # less, lower to trim more. Tunable.
 
 
 def feature_table(league_id: str, logical_name: str) -> str:
@@ -55,19 +60,60 @@ def apply_filter(df: pd.DataFrame, filt: dict) -> pd.DataFrame:
     return df
 
 
-def compute_team_values(sub: pd.DataFrame, metric: dict) -> pd.DataFrame:
+def _robust_mean(vals: pd.Series) -> tuple[float, int]:
+    """Mean after dropping within-group outliers via median/MAD modified-z >= TRIM_Z.
+
+    Returns (mean_of_kept, n_kept); falls back to the plain mean when MAD is 0.
+    """
+    v = pd.to_numeric(vals, errors="coerce").dropna().to_numpy(dtype=float)
+    if v.size == 0:
+        return float("nan"), 0
+    med = float(np.median(v))
+    mad = float(np.median(np.abs(v - med)))
+    if mad > 0:
+        keep = v[np.abs(0.6745 * (v - med) / mad) < TRIM_Z]
+        if keep.size:
+            return float(keep.mean()), int(keep.size)
+    return float(v.mean()), int(v.size)
+
+
+def compute_team_values(sub: pd.DataFrame, metric) -> pd.DataFrame:
     """Per-team value for one metric over already-filtered rows.
 
-    value = sum(numer_expr) / sum(denom_expr)  (or simple mean if no denom).
-    sample_size = the summed denominator (the exposure / # of trials).
+    agg='ratio' (default): value = sum(numer_expr) / sum(denom_expr) (or simple mean
+      if no denom); sample_size = the summed denominator (exposure / # of trials).
+    agg='trimmed_mean': per group, the mean of numer_expr AFTER dropping within-group
+      outliers (median/MAD, TRIM_Z) — the "average minus outliers"; sample_size = the
+      # of rows kept.
+    group_col selects the grouping: 'team' (default) or 'opponent' (a defense-allowed
+      view over a per-event table like drive_log, which has no _against columns).
     """
     sub = sub.copy()
+    gcol = metric.get("group_col")
+    if not isinstance(gcol, str) or not gcol:
+        gcol = "team"
+    agg = metric.get("agg")
+    if not isinstance(agg, str) or not agg:
+        agg = "ratio"
     sub["__numer"] = pd.to_numeric(sub.eval(metric["numer_expr"], engine="python"), errors="coerce")
-    if metric.get("denom_expr"):
-        sub["__denom"] = pd.to_numeric(sub.eval(metric["denom_expr"], engine="python"), errors="coerce")
+
+    if agg == "trimmed_mean":
+        rows = []
+        for key, part in sub.groupby(gcol):
+            val, kept = _robust_mean(part["__numer"])
+            rows.append({"team": key, "value": val, "numer": val,
+                         "sample_size": kept, "games": int(part["game_id"].nunique())})
+        g = pd.DataFrame(rows)
+        if not g.empty:
+            g = g[g["sample_size"] > 0].set_index("team")
+        return g
+
+    denom_expr = metric.get("denom_expr")
+    if isinstance(denom_expr, str) and denom_expr.strip():
+        sub["__denom"] = pd.to_numeric(sub.eval(denom_expr, engine="python"), errors="coerce")
     else:
         sub["__denom"] = 1.0
-    g = sub.groupby("team").agg(
+    g = sub.groupby(gcol).agg(
         numer=("__numer", "sum"),
         denom=("__denom", "sum"),
         games=("game_id", "nunique"),
@@ -75,6 +121,7 @@ def compute_team_values(sub: pd.DataFrame, metric: dict) -> pd.DataFrame:
     g = g[g["denom"] > 0].copy()
     g["value"] = g["numer"] / g["denom"]
     g["sample_size"] = g["denom"].round().astype(int)
+    g.index.name = "team"
     return g
 
 

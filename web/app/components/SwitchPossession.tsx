@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 export default function SwitchPossession({
   current,
@@ -8,17 +8,12 @@ export default function SwitchPossession({
   current: { a: string; b: string; season: string; situation: string; ball: string };
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
   function toggle() {
-    const ball = current.ball === "b" ? "a" : "b";
-    router.push(
-      `/?${new URLSearchParams({
-        a: current.a,
-        b: current.b,
-        season: current.season,
-        situation: current.situation,
-        ball,
-      })}`,
-    );
+    const sp = new URLSearchParams(params.toString());
+    sp.set("ball", current.ball === "b" ? "a" : "b");
+    router.push(`${pathname}?${sp.toString()}`);
   }
   return (
     <button

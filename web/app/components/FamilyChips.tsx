@@ -1,60 +1,43 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { TOP_FAMILIES } from "@/lib/matchup";
+import { useFamilyList, setFamilyList } from "@/lib/familyPrefs";
 
-// The top-4 families are locked on; the rest toggle into ?families= (extras).
+// Pick which metric families show in the matchup table. The selection persists in
+// localStorage (see familyPrefs) — stable across navigation and sessions, so once
+// you choose your metrics they stay until you change them. New picks append to the
+// end (then you can reorder them in the table).
 export default function FamilyChips({
   families,
-  selectedExtras,
-  current,
 }: {
-  families: { family: string; label: string; locked: boolean }[];
-  selectedExtras: string[];
-  current: { a: string; b: string; season: string; situation: string; ball: string };
+  families: { family: string; label: string }[];
 }) {
-  const router = useRouter();
+  const selected = useFamilyList(TOP_FAMILIES);
 
   function toggle(fam: string) {
-    const set = new Set(selectedExtras);
-    if (set.has(fam)) set.delete(fam);
-    else set.add(fam);
-    const params: Record<string, string> = {
-      a: current.a,
-      b: current.b,
-      season: current.season,
-      situation: current.situation,
-      ball: current.ball,
-    };
-    const ex = [...set];
-    if (ex.length) params.families = ex.join(",");
-    router.push(`/?${new URLSearchParams(params)}`);
+    if (selected.includes(fam)) setFamilyList(selected.filter((f) => f !== fam));
+    else setFamilyList([...selected, fam]);
   }
 
   return (
     <div className="flex flex-wrap gap-1.5">
-      {families.map((f) =>
-        f.locked ? (
-          <span
-            key={f.family}
-            title="Always shown"
-            className="rounded-full border border-sky-600/50 bg-sky-600/20 px-2.5 py-1 text-xs text-sky-200/90"
-          >
-            {f.label}
-          </span>
-        ) : (
+      {families.map((f) => {
+        const on = selected.includes(f.family);
+        return (
           <button
             key={f.family}
             onClick={() => toggle(f.family)}
+            aria-pressed={on}
             className={
-              selectedExtras.includes(f.family)
+              on
                 ? "rounded-full border border-sky-600 bg-sky-600/20 px-2.5 py-1 text-xs text-sky-200"
                 : "rounded-full border border-slate-700 px-2.5 py-1 text-xs text-slate-400 hover:border-slate-600"
             }
           >
             {f.label}
           </button>
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }

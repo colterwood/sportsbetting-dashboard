@@ -72,6 +72,16 @@ DDL = [
     "create index if not exists idx_game_status on game (status)",
     "create index if not exists idx_game_start  on game (start_time)",
     "alter table game add column if not exists week integer",
+    """
+    create table if not exists team_season_coach (
+      league_id  text not null,
+      season     integer not null,
+      team       text not null,            -- matches team_metrics.team / quarter_log.team
+      head_coach text not null,
+      primary key (league_id, season, team)
+    )
+    """,
+    "create index if not exists idx_coach_lookup on team_season_coach (league_id, season, head_coach)",
 
     # ---- declarative situation catalog (when to measure) -------------------
     """
@@ -103,6 +113,11 @@ DDL = [
     )
     """,
     "create index if not exists idx_metric_sport on metric_catalog (sport_id, is_active)",
+    # aggregation kind ('ratio' = sum/sum, default; 'trimmed_mean' = per-group mean
+    # with within-group outliers dropped) + which column to group by ('team' default,
+    # or 'opponent' for a defense-allowed view over a per-event table).
+    "alter table metric_catalog add column if not exists agg text not null default 'ratio'",
+    "alter table metric_catalog add column if not exists group_col text",
 
     # ---- pre-calculated outputs (the only thing the web app reads) ---------
     """

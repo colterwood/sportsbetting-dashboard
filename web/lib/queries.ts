@@ -158,24 +158,69 @@ export type SlateGame = {
   away_team: string;
 };
 
-// The earliest scheduled week in the latest season that has scheduled games.
-export async function getUpcomingSlate(
+// The latest season that has scheduled games (the upcoming season).
+export async function getScheduledSeason(league: string): Promise<number | null> {
+  const r = await sql<{ season: number | null }[]>`
+    select max(season) as season from game
+    where league_id = ${league} and status = 'scheduled'`;
+  return r[0]?.season ?? null;
+}
+
+// Distinct weeks that have scheduled games, ascending (for the Upcoming dropdown).
+export async function getScheduledWeeks(league: string, season: number): Promise<number[]> {
+  const r = await sql<{ week: number }[]>`
+    select distinct week from game
+    where league_id = ${league} and season = ${season} and status = 'scheduled' and week is not null
+    order by week`;
+  return r.map((x) => x.week);
+}
+
+// Scheduled games for one week.
+export async function getScheduledGames(
   league: string,
-): Promise<{ season: number; week: number | null; games: SlateGame[] } | null> {
-  const head = await sql<{ season: number; week: number | null }[]>`
-    select season, min(week) as week from game
-    where league_id = ${league} and status = 'scheduled'
-      and season = (select max(season) from game
-                    where league_id = ${league} and status = 'scheduled')
-    group by season`;
-  if (head.length === 0) return null;
-  const { season, week } = head[0];
-  const games = await sql<SlateGame[]>`
+  season: number,
+  week: number,
+): Promise<SlateGame[]> {
+  return sql<SlateGame[]>`
     select game_id, season, week, start_time, home_team, away_team from game
-    where league_id = ${league} and status = 'scheduled' and season = ${season}
-      and week is not distinct from ${week}
+    where league_id = ${league} and season = ${season} and status = 'scheduled' and week = ${week}
     order by start_time nulls last, home_team`;
-  return { season, week, games };
+}
+
+// Games currently in progress (the Live tab).
+export async function getLiveGames(league: string): Promise<SlateGame[]> {
+  return sql<SlateGame[]>`
+    select game_id, season, week, start_time, home_team, away_team from game
+    where league_id = ${league} and status = 'in_progress'
+    order by start_time nulls last, home_team`;
+}
+
+// Each team's next scheduled opponent in the upcoming season — used to auto-fill
+// the second search box when a team is picked. Keyed by team displayName (matches
+// team_metrics), both home and away directions.
+export async function getNextOpponents(league: string): Promise<Record<string, string>> {
+  const rows = await sql<{ team: string; opp: string }[]>`
+    with sched as (
+      select home_team, away_team, week, start_time from game
+      where league_id = ${league} and status = 'scheduled'
+        and season = (select max(season) from game
+                      where league_id = ${league} and status = 'scheduled')
+    ),
+    flat as (
+      select home_team as team, away_team as opp, week, start_time from sched
+      union all
+      select away_team as team, home_team as opp, week, start_time from sched
+    ),
+    ranked as (
+      select team, opp,
+             row_number() over (partition by team
+                                order by week nulls last, start_time nulls last) as rn
+      from flat
+    )
+    select team, opp from ranked where rn = 1`;
+  const map: Record<string, string> = {};
+  for (const r of rows) map[r.team] = r.opp;
+  return map;
 }
 
 export type MatchupRow = {
@@ -187,6 +232,7 @@ export type MatchupRow = {
   value: number | null;
   numerator: number | null;
   sample_size: number;
+  pctile: number | null;
   zscore: number | null;
   rank: number | null;
   league_n: number | null;
@@ -204,7 +250,7 @@ export async function getMatchupMetrics(
 ): Promise<MatchupRow[]> {
   return sql<MatchupRow[]>`
     select tm.team, tm.metric_id, mc.display_name, mc.unit, mc.higher_is,
-           tm.value, tm.numerator, tm.sample_size, tm.zscore, tm.rank, tm.league_n,
+           tm.value, tm.numerator, tm.sample_size, tm.pctile, tm.zscore, tm.rank, tm.league_n,
            tm.is_tail, tm.tail_side, tm.low_sample
     from team_metrics tm
     join metric_catalog mc on mc.metric_id = tm.metric_id
@@ -233,4 +279,37 @@ export async function getMatchupDistributions(
     from metric_distribution
     where league_id = ${league} and season = ${season} and situation_key = ${situation}
       and metric_id = any(${metricIds})`;
+}
+
+export type CoachInfo = {
+  team: string;
+  coach: string | null;
+  prev_coach: string | null; // this team's coach last season
+  coach_prev_team: string | null; // the team this coach led last season (if different)
+};
+
+// Coach for each team in `season`, plus last season's coach for the same team and
+// (if the coach is new and came from elsewhere) the team they led last season.
+export async function getTeamCoaches(
+  league: string,
+  season: number,
+  teams: string[],
+): Promise<Record<string, CoachInfo>> {
+  if (teams.length === 0) return {};
+  const rows = await sql<CoachInfo[]>`
+    select c.team,
+           c.head_coach as coach,
+           p.head_coach as prev_coach,
+           pt.team as coach_prev_team
+    from team_season_coach c
+    left join team_season_coach p
+      on p.league_id = c.league_id and p.season = c.season - 1 and p.team = c.team
+    left join team_season_coach pt
+      on pt.league_id = c.league_id and pt.season = c.season - 1
+         and pt.head_coach = c.head_coach and pt.team <> c.team
+    where c.league_id = ${league} and c.season = ${season}
+      and c.team = any(${teams})`;
+  const map: Record<string, CoachInfo> = {};
+  for (const r of rows) map[r.team] = r;
+  return map;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { shortSituation } from "@/lib/matchup";
 
@@ -10,23 +10,45 @@ export default function MatchupControls({
   seasons,
   situations,
   teams,
+  opponents,
   current,
 }: {
   seasons: Opt[];
   situations: Opt[];
   teams: string[];
+  opponents: Record<string, string>;
   current: { season: string; situation: string; a: string; b: string; ball: string };
 }) {
   const router = useRouter();
-  const [a, setA] = useState(current.a);
-  const [b, setB] = useState(current.b);
+  const pathname = usePathname();
+  const params = useSearchParams();
+  // Search boxes start EMPTY — they are for entering a NEW matchup, not for
+  // echoing the one currently loaded (that shows in the heading below).
+  const [a, setA] = useState("");
+  const [b, setB] = useState("");
   const [season, setSeason] = useState(current.season);
   const [situation, setSituation] = useState(current.situation);
 
+  const teamSet = new Set(teams);
   const loaded = Boolean(current.a && current.b);
-  const nav = (p: { a: string; b: string; season: string; situation: string }) =>
-    router.push(`/?${new URLSearchParams({ ...p, ball: current.ball || "a" })}`);
+  // Navigate on the CURRENT page (so /upcoming etc. stay put) and preserve other
+  // params like ?week.
+  const nav = (p: { a: string; b: string; season: string; situation: string }) => {
+    const sp = new URLSearchParams(params.toString());
+    sp.set("a", p.a);
+    sp.set("b", p.b);
+    sp.set("season", p.season);
+    sp.set("situation", p.situation);
+    sp.set("ball", current.ball || "a");
+    router.push(`${pathname}?${sp.toString()}`);
+  };
 
+  // Picking a valid Team A auto-fills Team B with A's next scheduled opponent.
+  // The user can still click into B (which clears it) to type a different team.
+  function pickA(v: string) {
+    setA(v);
+    if (teamSet.has(v) && opponents[v]) setB(opponents[v]);
+  }
   function pickSit(v: string) {
     setSituation(v);
     if (loaded) nav({ a: current.a, b: current.b, season, situation: v });
@@ -36,7 +58,20 @@ export default function MatchupControls({
     if (loaded) nav({ a: current.a, b: current.b, season: v, situation });
   }
   function go() {
-    if (a && b) nav({ a, b, season, situation });
+    if (!a || !b) return;
+    nav({ a, b, season, situation });
+    setA("");
+    setB(""); // back to empty defaults; the loaded matchup shows in the heading
+  }
+  function clearAll() {
+    setA("");
+    setB("");
+    const sp = new URLSearchParams(params.toString());
+    sp.delete("a");
+    sp.delete("b");
+    sp.delete("ball");
+    const qs = sp.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
   }
 
   return (
@@ -61,9 +96,23 @@ export default function MatchupControls({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <input list="teamlist" value={a} onChange={(e) => setA(e.target.value)} placeholder="Team A" className={inp} />
+        <input
+          list="teamlist"
+          value={a}
+          onFocus={() => setA("")}
+          onChange={(e) => pickA(e.target.value)}
+          placeholder="Team A"
+          className={inp}
+        />
         <span className="text-slate-500">vs</span>
-        <input list="teamlist" value={b} onChange={(e) => setB(e.target.value)} placeholder="Team B" className={inp} />
+        <input
+          list="teamlist"
+          value={b}
+          onFocus={() => setB("")}
+          onChange={(e) => setB(e.target.value)}
+          placeholder="Team B"
+          className={inp}
+        />
         <button
           onClick={go}
           disabled={!a || !b}
@@ -72,7 +121,7 @@ export default function MatchupControls({
           Go
         </button>
         {(current.a || current.b) && (
-          <button onClick={() => router.push("/")} className="text-xs text-slate-400 hover:text-slate-200">
+          <button onClick={clearAll} className="text-xs text-slate-400 hover:text-slate-200">
             clear
           </button>
         )}

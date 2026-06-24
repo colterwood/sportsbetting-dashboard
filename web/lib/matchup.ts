@@ -13,7 +13,10 @@ export const FAMILY_LABELS: Record<string, string> = {
   yards_per_run: "Yards / Run",
   secs_per_play: "Secs / Play",
   secs_per_drive: "Secs / Drive",
-  pass_rate: "Pass / Rush",
+  pass_rate: "Pass Rate",
+  yards_per_drive: "Yards / Drive",
+  avg_start_pos: "Field Position",
+  adj_start_pos: "Field Pos (adj)",
 };
 
 // Always-shown top 4 (fixed order), then everything else.
@@ -32,6 +35,9 @@ const OTHER_FAMILIES = [
   "secs_per_play",
   "secs_per_drive",
   "pass_rate",
+  "yards_per_drive",
+  "avg_start_pos",
+  "adj_start_pos",
 ];
 export const PAIRED_FAMILIES = [...TOP_FAMILIES, ...OTHER_FAMILIES];
 
@@ -63,21 +69,27 @@ export function goodRank(higherIs: string, rank: number | null, leagueN: number 
 
 export type Quality = "good" | "bad" | "neutral";
 
-// Color a cell ONLY when the team is a true outlier (is_tail = robust median/MAD
-// modified z >= threshold, set in build_metrics), oriented by whether that outlier
-// FAVORS OFFENSE/scoring in this matchup (betting lens):
-//   green ("good") = offense outlier-high (elite) OR defense outlier-high (leaky)
-//   red   ("bad")  = offense outlier-low (weak)   OR defense outlier-low (stingy)
-// Non-outliers and neutral metrics get no color.
+// Color a matchup cell by how EXTREME the team is on the metric — the top/bottom
+// PCT_EDGE% by value — oriented by whether that extreme FAVORS OFFENSE/scoring
+// (betting lens): green = favorable extreme, red = unfavorable extreme.
+//   green ("good") = offense top-tier (elite) OR defense top-tier (leaky)
+//   red   ("bad")  = offense bottom-tier (weak) OR defense bottom-tier (stingy)
+// We use PERCENTILE rather than the strict robust-outlier flag so the genuine
+// extremes of ANY distribution color — including right-skewed ones like Pass Rate,
+// whose high side never reaches a 2-MAD outlier. Neutral-direction metrics (e.g.
+// Pass Rate) are treated like good_for_team, so offense high=green/low=red and the
+// defense column mirrors via the same lens. Middle-of-pack / unknown = no color.
+const PCT_EDGE = 10; // colour the top & bottom 10% (tunable)
 export function cellColor(
   higherIs: string,
   side: "off" | "def" | null,
-  isTail: boolean,
-  tailSide: "high" | "low" | null,
+  pctile: number | null,
 ): Quality {
-  if (!isTail || tailSide == null || side == null || higherIs === "neutral") return "neutral";
+  if (pctile == null || side == null) return "neutral";
+  const pos = pctile >= 100 - PCT_EDGE ? "high" : pctile <= PCT_EDGE ? "low" : null;
+  if (pos == null) return "neutral";
+  const eff = higherIs === "neutral" ? "good_for_team" : higherIs;
   const favorableWhenHigh =
-    (side === "off" && higherIs === "good_for_team") || (side === "def" && higherIs === "bad_for_team");
-  const high = tailSide === "high";
-  return high === favorableWhenHigh ? "good" : "bad";
+    (side === "off" && eff === "good_for_team") || (side === "def" && eff === "bad_for_team");
+  return (pos === "high") === favorableWhenHigh ? "good" : "bad";
 }

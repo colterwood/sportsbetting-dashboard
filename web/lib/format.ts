@@ -81,3 +81,16 @@ export function formatNumer(v: number | null | undefined): string {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
   return Math.round(v).toLocaleString();
 }
+
+// Coach line shown under a team name. If the coach changed from last season, the
+// prior coach is in (parens); if the new coach came from another team, that team
+// is in [brackets]:  "Coach X [Team Y] (Coach Z)".
+export function coachLine(
+  c?: { coach: string | null; prev_coach: string | null; coach_prev_team: string | null },
+): string | null {
+  if (!c || !c.coach) return null;
+  const changed = c.prev_coach && c.prev_coach !== c.coach;
+  if (!changed) return c.coach;
+  const prevTeam = c.coach_prev_team ? ` [${c.coach_prev_team}]` : "";
+  return `${c.coach}${prevTeam} (${c.prev_coach})`;
+}
