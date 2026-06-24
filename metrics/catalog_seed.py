@@ -112,10 +112,10 @@ METRICS = [
     {"metric_id": "yards_per_run_def", "display_name": "Yards / Run Allowed (Def)",
      "source_table": _QL, "side": "defense", "numer_expr": "yards_per_run_against * rush_plays_against",
      "denom_expr": "rush_plays_against", "unit": "yards", "higher_is": "bad_for_team", "min_sample": 25, "sort_order": 33},
-    {"metric_id": "pass_rate_off", "display_name": "Pass Rate (Off)",
+    {"metric_id": "pass_rate_off", "display_name": "Pass / Rush (Off)",
      "source_table": _QL, "side": "offense", "numer_expr": "pass_plays_for",
      "denom_expr": "plays_for", "unit": "rate", "higher_is": "neutral", "min_sample": 40, "sort_order": 34},
-    {"metric_id": "pass_rate_def", "display_name": "Pass Rate Faced (Def)",
+    {"metric_id": "pass_rate_def", "display_name": "Pass / Rush Faced (Def)",
      "source_table": _QL, "side": "defense", "numer_expr": "pass_plays_against",
      "denom_expr": "plays_against", "unit": "rate", "higher_is": "neutral", "min_sample": 40, "sort_order": 35},
 ]

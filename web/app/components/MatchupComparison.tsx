@@ -112,12 +112,17 @@ export default function MatchupComparison({
 function Cell({ row }: { row: MatchupRow | null }) {
   if (!row) return <span className="text-slate-600">—</span>;
   const isRate = row.unit === "rate";
+  const isPassRush = familyOf(row.metric_id) === "pass_rate";
   const gr = goodRank(row.higher_is, row.rank, row.league_n);
   const q = cellColor(row.higher_is, sideOf(row.metric_id), row.is_tail, row.tail_side);
   const rankCls = q === "good" ? "text-emerald-300" : q === "bad" ? "text-rose-300" : "text-slate-500";
   return (
     <span className="whitespace-nowrap tabular-nums">
-      <span className="text-slate-200">{formatValue(row.unit, row.value)}</span>
+      <span className="text-slate-200">
+        {isPassRush && row.value != null
+          ? `${Math.round(row.value * 100)}/${Math.round((1 - row.value) * 100)}`
+          : formatValue(row.unit, row.value)}
+      </span>
       {isRate && row.numerator != null && (
         <span className="text-slate-500"> ({Math.round(row.numerator)}/{row.sample_size})</span>
       )}

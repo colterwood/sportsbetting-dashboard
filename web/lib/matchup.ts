@@ -13,7 +13,7 @@ export const FAMILY_LABELS: Record<string, string> = {
   yards_per_run: "Yards / Run",
   secs_per_play: "Secs / Play",
   secs_per_drive: "Secs / Drive",
-  pass_rate: "Pass Rate",
+  pass_rate: "Pass / Rush",
 };
 
 // Always-shown top 4 (fixed order), then everything else.
