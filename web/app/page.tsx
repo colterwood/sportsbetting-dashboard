@@ -41,7 +41,6 @@ export default async function Home({ searchParams }: { searchParams: SP }) {
     situations.map((s) => s.situation_key),
     situations.some((s) => s.situation_key === "game") ? "game" : situations[0].situation_key,
   );
-  const situationName = situations.find((s) => s.situation_key === situation)?.display_name;
 
   const teams = await getTeams(league, season);
   const aRaw = q("a");
@@ -56,14 +55,7 @@ export default async function Home({ searchParams }: { searchParams: SP }) {
   const rows = a && b ? await getMatchupMetrics(league, season, a, b, situation) : [];
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-lg font-semibold text-slate-100">Matchups</h1>
-        <p className="text-sm text-slate-400">
-          Offense-vs-defense edges from {season} form. Pick a game from the slate or build one.
-        </p>
-      </div>
-
+    <div className="space-y-4">
       <MatchupControls
         seasons={seasons.map((s) => ({ value: String(s), label: String(s) }))}
         situations={situations.map((s) => ({ value: s.situation_key, label: s.display_name }))}
@@ -74,27 +66,31 @@ export default async function Home({ searchParams }: { searchParams: SP }) {
       {a && b ? (
         <section className="space-y-3">
           <h2 className="text-base font-semibold text-slate-100">
-            {a} <span className="font-normal text-slate-500">vs</span> {b}{" "}
-            <span className="text-sm font-normal text-slate-400">· {situationName} · {season}</span>
+            {a} <span className="font-normal text-slate-500">vs</span> {b}
           </h2>
-          <FamilyChips
-            families={PAIRED_FAMILIES.map((f) => ({ family: f, label: familyLabel(f) }))}
-            selected={selectedFamilies}
-            current={{ a, b, season: String(season), situation }}
-          />
           {rows.length ? (
             <MatchupComparison rows={rows} teamA={a} teamB={b} families={selectedFamilies} />
           ) : (
-            <Empty msg="No metric data for one of these teams in this season." />
+            <Empty msg="No data for one of these teams." />
           )}
+          <details>
+            <summary className="cursor-pointer text-[11px] text-slate-500 hover:text-slate-300">
+              choose metrics
+            </summary>
+            <div className="mt-2">
+              <FamilyChips
+                families={PAIRED_FAMILIES.map((f) => ({ family: f, label: familyLabel(f) }))}
+                selected={selectedFamilies}
+                current={{ a, b, season: String(season), situation }}
+              />
+            </div>
+          </details>
         </section>
       ) : (
-        <p className="rounded-lg border border-dashed border-slate-700 px-4 py-3 text-sm text-slate-400">
-          Pick two teams above, or tap a game in the slate below.
-        </p>
+        <p className="text-sm text-slate-400">Pick two teams, or tap a game below.</p>
       )}
 
-      {slate && <Slate slate={slate} metricsSeason={season} />}
+      {slate && <Slate slate={slate} metricsSeason={season} collapsed={Boolean(a && b)} />}
     </div>
   );
 }
