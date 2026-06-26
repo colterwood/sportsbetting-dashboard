@@ -11,16 +11,19 @@ export default function GameList({
   teamsWithData = [],
   basePath = "/",
   week,
+  league,
 }: {
   games: SlateGame[];
   metricsSeason: number;
   teamsWithData?: string[];
   basePath?: string;
   week?: number | null;
+  league?: string;
 }) {
   if (!games.length) return null;
   const has = new Set(teamsWithData);
   const weekParam = week != null ? `&week=${week}` : "";
+  const leagueParam = league ? `&league=${league}` : "";
   return (
     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
       {games.map((g) => {
@@ -28,8 +31,8 @@ export default function GameList({
         return (
           <Link
             key={g.game_id}
-            href={`${basePath}?a=${encodeURIComponent(g.away_team)}&b=${encodeURIComponent(g.home_team)}&season=${metricsSeason}&situation=game${weekParam}`}
-            title={noData ? "One team is outside our FBS dataset" : undefined}
+            href={`${basePath}?a=${encodeURIComponent(g.away_team)}&b=${encodeURIComponent(g.home_team)}&season=${metricsSeason}&situation=game${weekParam}${leagueParam}`}
+            title={noData ? "One team is outside our dataset" : undefined}
             className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs hover:border-sky-600/50 hover:bg-slate-800/50 ${
               noData ? "border-slate-800/60 bg-slate-900/20 opacity-50" : "border-slate-800 bg-slate-900/40"
             }`}

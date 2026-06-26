@@ -15,7 +15,7 @@ from datetime import datetime
 import requests
 from sqlalchemy import text
 
-from db import engine_from_env
+from db import engine_from_env, revalidate
 
 LEAGUE_ID = "ncaaf"
 SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard"
@@ -88,6 +88,7 @@ def build(season: int, weeks: range) -> None:
     eng.dispose()
     sched = sum(1 for r in rows if r["status"] == "scheduled")
     print(f"{season}: upserted {len(rows)} games ({sched} scheduled, {len(rows) - sched} final/live)")
+    revalidate("schedule")
 
 
 def main() -> None:
