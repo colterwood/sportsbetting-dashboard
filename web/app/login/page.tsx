@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { authToken, AUTH_COOKIE } from "@/lib/auth";
+import SubmitButton from "./SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -44,12 +45,7 @@ export default async function Login({
         />
         <input type="hidden" name="from" value={from ?? "/"} />
         {error && <p className="text-xs text-rose-400">Incorrect password.</p>}
-        <button
-          type="submit"
-          className="w-full rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500"
-        >
-          Enter
-        </button>
+        <SubmitButton />
       </form>
     </div>
   );
