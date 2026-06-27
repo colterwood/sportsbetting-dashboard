@@ -76,10 +76,24 @@ export type ProfileRow = {
 };
 
 export const getLeagues = cached(
-  async (): Promise<LeagueOpt[]> =>
-    sql<LeagueOpt[]>`
-    select league_id, display_name, sport_id from league
-    where is_active = true order by display_name`,
+  async (): Promise<LeagueOpt[]> => {
+    try {
+      return await sql<LeagueOpt[]>`
+        select league_id, display_name, sport_id from league
+        where is_active = true order by display_name`;
+    } catch (e) {
+      // The root layout calls this on EVERY route, so it also runs while Next
+      // prerenders the static pages (/totals, /_not-found) at build time. A cold or
+      // busy DB during the build must not fail the whole deploy, so fall back to no
+      // leagues there. At RUNTIME we rethrow → the error boundary shows a retry
+      // instead of a misleading "no active leagues yet".
+      if (process.env.NEXT_PHASE === "phase-production-build") {
+        console.warn("getLeagues failed during build; using empty fallback:", e);
+        return [];
+      }
+      throw e;
+    }
+  },
   "getLeagues",
   "registry",
 );
