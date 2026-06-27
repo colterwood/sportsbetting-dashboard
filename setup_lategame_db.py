@@ -38,6 +38,12 @@ DDL = [
     """,
     # pick-the-anchor lookups (closest scoring play with secs_left >= T), then bucket by diff
     "create index if not exists idx_anchor_pick  on ncaam_anchor (season, half, secs_left)",
+    # The web getLateGameAnchors does `distinct on (game_id) ... order by game_id,
+    # secs_left` over (season, half). This composite serves BOTH the filter and that
+    # ordering, so Postgres skips the full-table scan + sort that made the query take
+    # ~100s on the shared instance. Leading (season, half) narrows first; the trailing
+    # (game_id, secs_left) feeds the distinct-on directly.
+    "create index if not exists idx_anchor_pick_game on ncaam_anchor (season, half, game_id, secs_left)",
     "create index if not exists idx_anchor_lead  on ncaam_anchor (season, half, leading_team)",
     "create index if not exists idx_anchor_trail on ncaam_anchor (season, half, trailing_team)",
     "create index if not exists idx_anchor_game  on ncaam_anchor (game_id)",

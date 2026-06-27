@@ -11,7 +11,9 @@ import MiniDistribution from "./MiniDistribution";
 // of rows and their order come from the user's persisted preference (see
 // familyPrefs) — stable across navigation/sessions. Each row taps open to a mini
 // league-distribution with each team marked, and reorders with the up/down
-// controls.
+// controls. On wide (xl) screens the distributions are also shown always-on in a
+// side rail so desktop users see the spread without tapping; phones keep the
+// compact tap-to-expand behavior unchanged.
 export default function MatchupComparison({
   offenseTeam,
   defenseTeam,
@@ -46,104 +48,147 @@ export default function MatchupComparison({
   for (const r of rows) idx.set(`${r.team}|${familyOf(r.metric_id)}|${sideOf(r.metric_id)}`, r);
   const get = (t: string, f: string, s: "off" | "def") => idx.get(`${t}|${f}|${s}`) ?? null;
   const distOf = new Map(dists.map((d) => [d.metric_id, d]));
+  const pair = (f: string) => {
+    const off = get(offenseTeam, f, "off");
+    const def = get(defenseTeam, f, "def");
+    return { off, def, offDist: off ? distOf.get(off.metric_id) : undefined, defDist: def ? distOf.get(def.metric_id) : undefined };
+  };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-800">
-      <table className="w-full text-sm">
-        <thead className="bg-slate-900 text-[11px] uppercase tracking-wide text-slate-500">
-          <tr>
-            <th className="px-2 py-2 text-left font-medium">Metric</th>
-            <th className="px-2 py-2 text-right font-medium">Offense</th>
-            <th className="px-2 py-2 text-right font-medium">Defense</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-800">
-          {order.length === 0 && (
+    <div className="gap-5 xl:grid xl:grid-cols-3">
+      <div className="overflow-hidden rounded-lg border border-slate-800 xl:col-span-2">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-900 text-[11px] uppercase tracking-wide text-slate-500">
             <tr>
-              <td colSpan={3} className="px-3 py-4 text-center text-xs text-slate-500">
-                No metrics selected — pick some in “Choose metrics” above.
-              </td>
+              <th className="px-2 py-2 text-left font-medium">Metric</th>
+              <th className="px-2 py-2 text-right font-medium">Offense</th>
+              <th className="px-2 py-2 text-right font-medium">Defense</th>
             </tr>
-          )}
-          {order.map((f, i) => {
-            const off = get(offenseTeam, f, "off");
-            const def = get(defenseTeam, f, "def");
-            const isOpen = open.has(f);
-            const offDist = off ? distOf.get(off.metric_id) : undefined;
-            const defDist = def ? distOf.get(def.metric_id) : undefined;
-            return (
-              <Fragment key={f}>
-                <tr onClick={() => toggle(f)} className="cursor-pointer hover:bg-slate-800/40">
-                  <td className="px-2 py-1.5 text-slate-300">
-                    <span className="flex items-center gap-1">
-                      <span className="flex items-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => move(i, -1)}
-                          disabled={i === 0}
-                          aria-label="Move up"
-                          className="px-1 py-0.5 text-[11px] leading-none text-slate-500 hover:text-slate-200 disabled:opacity-20"
-                        >
-                          ▲
-                        </button>
-                        <button
-                          onClick={() => move(i, 1)}
-                          disabled={i === order.length - 1}
-                          aria-label="Move down"
-                          className="px-1 py-0.5 text-[11px] leading-none text-slate-500 hover:text-slate-200 disabled:opacity-20"
-                        >
-                          ▼
-                        </button>
+          </thead>
+          <tbody className="divide-y divide-slate-800">
+            {order.length === 0 && (
+              <tr>
+                <td colSpan={3} className="px-3 py-4 text-center text-xs text-slate-500">
+                  No metrics selected — pick some in “Choose metrics” above.
+                </td>
+              </tr>
+            )}
+            {order.map((f, i) => {
+              const { off, def, offDist, defDist } = pair(f);
+              const isOpen = open.has(f);
+              return (
+                <Fragment key={f}>
+                  <tr onClick={() => toggle(f)} className="cursor-pointer hover:bg-slate-800/40">
+                    <td className="px-2 py-1.5 text-slate-300">
+                      <span className="flex items-center gap-1">
+                        <span className="flex items-center" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => move(i, -1)}
+                            disabled={i === 0}
+                            aria-label="Move up"
+                            className="px-1 py-0.5 text-[11px] leading-none text-slate-500 hover:text-slate-200 disabled:opacity-20"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            onClick={() => move(i, 1)}
+                            disabled={i === order.length - 1}
+                            aria-label="Move down"
+                            className="px-1 py-0.5 text-[11px] leading-none text-slate-500 hover:text-slate-200 disabled:opacity-20"
+                          >
+                            ▼
+                          </button>
+                        </span>
+                        {/* the inline expander is redundant once the desktop rail is visible */}
+                        <span className="text-[9px] text-slate-600 xl:hidden">{isOpen ? "▼" : "▸"}</span>
+                        {familyLabel(f)}
                       </span>
-                      <span className="text-[9px] text-slate-600">{isOpen ? "▼" : "▸"}</span>
-                      {familyLabel(f)}
-                    </span>
-                  </td>
-                  <td className="px-2 py-1.5 text-right"><Cell row={off} /></td>
-                  <td className="px-2 py-1.5 text-right"><Cell row={def} /></td>
-                </tr>
-                {isOpen && (
-                  <tr className="bg-slate-900/40">
-                    <td colSpan={3} className="px-3 py-3">
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        {off && offDist ? (
-                          <MiniDistribution
-                            histogram={offDist.histogram}
-                            mean={offDist.mean}
-                            median={offDist.p50}
-                            valMin={offDist.val_min}
-                            valMax={offDist.val_max}
-                            value={off.value}
-                            unit={off.unit}
-                            color="#34d399"
-                            caption={`${offenseTeam} — offense`}
-                          />
-                        ) : (
-                          <span className="text-xs text-slate-600">no distribution</span>
-                        )}
-                        {def && defDist ? (
-                          <MiniDistribution
-                            histogram={defDist.histogram}
-                            mean={defDist.mean}
-                            median={defDist.p50}
-                            valMin={defDist.val_min}
-                            valMax={defDist.val_max}
-                            value={def.value}
-                            unit={def.unit}
-                            color="#fb7185"
-                            caption={`${defenseTeam} — defense`}
-                          />
-                        ) : (
-                          <span className="text-xs text-slate-600">no distribution</span>
-                        )}
-                      </div>
                     </td>
+                    <td className="px-2 py-1.5 text-right"><Cell row={off} /></td>
+                    <td className="px-2 py-1.5 text-right"><Cell row={def} /></td>
                   </tr>
-                )}
-              </Fragment>
+                  {isOpen && (
+                    <tr className="bg-slate-900/40 xl:hidden">
+                      <td colSpan={3} className="px-3 py-3">
+                        <DistPair
+                          off={off} def={def} offDist={offDist} defDist={defDist}
+                          offenseTeam={offenseTeam} defenseTeam={defenseTeam}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* desktop-only: league distributions for every selected metric, always on */}
+      {order.length > 0 && (
+        <aside className="hidden space-y-3 xl:block">
+          <h3 className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+            League distribution
+          </h3>
+          {order.map((f) => {
+            const { off, def, offDist, defDist } = pair(f);
+            if (!offDist && !defDist) return null;
+            return (
+              <div key={f} className="rounded-lg border border-slate-800 bg-slate-900/30 p-3">
+                <div className="mb-2 text-xs font-medium text-slate-300">{familyLabel(f)}</div>
+                <DistPair
+                  off={off} def={def} offDist={offDist} defDist={defDist}
+                  offenseTeam={offenseTeam} defenseTeam={defenseTeam} dense
+                />
+              </div>
             );
           })}
-        </tbody>
-      </table>
+        </aside>
+      )}
+    </div>
+  );
+}
+
+// The offense (green) + defense (rose) league-distribution pair, shared by the
+// phone tap-to-expand row and the desktop side rail. `dense` stacks them for the
+// narrow rail; otherwise they sit side by side.
+function DistPair({
+  off,
+  def,
+  offDist,
+  defDist,
+  offenseTeam,
+  defenseTeam,
+  dense,
+}: {
+  off: MatchupRow | null;
+  def: MatchupRow | null;
+  offDist?: MiniDist;
+  defDist?: MiniDist;
+  offenseTeam: string;
+  defenseTeam: string;
+  dense?: boolean;
+}) {
+  return (
+    <div className={dense ? "space-y-3" : "grid gap-4 sm:grid-cols-2"}>
+      {off && offDist ? (
+        <MiniDistribution
+          histogram={offDist.histogram} mean={offDist.mean} median={offDist.p50}
+          valMin={offDist.val_min} valMax={offDist.val_max} value={off.value}
+          unit={off.unit} color="#34d399" caption={`${offenseTeam} — offense`}
+        />
+      ) : (
+        <span className="text-xs text-slate-600">no distribution</span>
+      )}
+      {def && defDist ? (
+        <MiniDistribution
+          histogram={defDist.histogram} mean={defDist.mean} median={defDist.p50}
+          valMin={defDist.val_min} valMax={defDist.val_max} value={def.value}
+          unit={def.unit} color="#fb7185" caption={`${defenseTeam} — defense`}
+        />
+      ) : (
+        <span className="text-xs text-slate-600">no distribution</span>
+      )}
     </div>
   );
 }

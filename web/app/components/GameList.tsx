@@ -25,7 +25,7 @@ export default function GameList({
   const weekParam = week != null ? `&week=${week}` : "";
   const leagueParam = league ? `&league=${league}` : "";
   return (
-    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {games.map((g) => {
         const noData = !has.has(g.away_team) || !has.has(g.home_team);
         return (

@@ -167,11 +167,11 @@ function Comparables({ rows, leader, trailer }: { rows: AnchorPick[]; leader: st
       <summary className="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-100">
         Comparable games <span className="text-slate-500">({rows.length}{rows.length > 40 ? ", showing 40" : ""})</span>
       </summary>
-      <div className="mt-2 divide-y divide-slate-800/70">
+      <div className="mt-2 grid grid-cols-1 gap-x-8 xl:grid-cols-2">
         {shown.map((r) => (
           <a key={r.game_id} href={`https://www.espn.com/mens-college-basketball/game/_/gameId/${r.game_id}`}
             target="_blank" rel="noreferrer"
-            className={`flex items-center justify-between gap-3 py-1.5 text-xs hover:bg-slate-800/40 ${hot(r) ? "text-slate-100" : "text-slate-400"}`}>
+            className={`flex items-center justify-between gap-3 border-b border-slate-800/70 py-1.5 text-xs hover:bg-slate-800/40 ${hot(r) ? "text-slate-100" : "text-slate-400"}`}>
             <span className="min-w-0 truncate">
               {r.game_date ?? "—"} · <span className="text-slate-300">{short(r.leading_team)}</span> led {short(r.trailing_team)} by {r.score_diff}
             </span>
