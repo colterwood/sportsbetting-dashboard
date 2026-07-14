@@ -31,6 +31,7 @@ export default function GameList({
         return (
           <Link
             key={g.game_id}
+            prefetch={false} // a full slate is ~60 links; viewport prefetch would herd the server
             href={`${basePath}?a=${encodeURIComponent(g.away_team)}&b=${encodeURIComponent(g.home_team)}&season=${metricsSeason}&situation=game${weekParam}${leagueParam}`}
             title={noData ? "One team is outside our dataset" : undefined}
             className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs hover:border-sky-600/50 hover:bg-slate-800/50 ${
