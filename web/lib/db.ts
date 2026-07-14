@@ -18,9 +18,10 @@ export const sql =
   postgres(url, {
     ssl: "require",
     prepare: false, // required for the Supabase transaction pooler (port 6543)
-    // Serverless hardening (Vercel ↔ Supabase). On a cold function the very first
-    // query pays connection setup; keep that cheap and fail fast instead of hanging:
-    fetch_types: false, // skip the type-introspection round trip on every new connection
+    // NOTE: `fetch_types` must stay ON (default). With fetch_types:false, postgres.js
+    // can't serialize array params — `any(${[...]})` reaches Postgres as a bare
+    // comma-joined string and every matchup query dies with "malformed array literal"
+    // (22P02). The type fetch costs one round trip per new connection; that's fine.
     connect_timeout: 10, // seconds — surface a dead route quickly, don't hang ~30s
     max: 3, // a few conns cover each request's Promise.all fan-out; pooler-friendly
     idle_timeout: 20,
