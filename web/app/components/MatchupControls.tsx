@@ -95,7 +95,7 @@ export default function MatchupControls({
         })}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-end gap-2 text-sm">
         <input
           list="teamlist"
           value={a}
@@ -125,11 +125,15 @@ export default function MatchupControls({
             clear
           </button>
         )}
-        <select value={season} onChange={(e) => pickSeason(e.target.value)} className={`${inp} ml-auto`}>
-          {seasons.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
+        {/* which season's computed metrics the comparison uses */}
+        <label className="ml-auto flex flex-col gap-0.5">
+          <span className="text-[11px] uppercase tracking-wide text-slate-400">Data from</span>
+          <select value={season} onChange={(e) => pickSeason(e.target.value)} className={inp}>
+            {seasons.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <datalist id="teamlist">

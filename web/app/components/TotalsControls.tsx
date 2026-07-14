@@ -55,7 +55,7 @@ export default function TotalsControls({
   return (
     <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/40 p-3">
       {/* teams */}
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-end gap-2 text-sm">
         <input list="ncaam-teams" value={st.a}
           onFocus={() => set("a", "")}
           onChange={(e) => set("a", e.target.value)}
@@ -67,9 +67,13 @@ export default function TotalsControls({
           onChange={(e) => set("b", e.target.value)}
           onBlur={() => { if (!st.b.trim()) set("b", current.b); }}
           placeholder="Team B (home)" className={inp} />
-        <select value={st.season} onChange={(e) => set("season", e.target.value)} className={`${sel} ml-auto`}>
-          {seasons.map((y) => <option key={y} value={y}>{y}</option>)}
-        </select>
+        {/* which season's historical spots the model draws from */}
+        <label className="ml-auto flex flex-col gap-0.5">
+          <span className="text-[11px] uppercase tracking-wide text-slate-400">Data from</span>
+          <select value={st.season} onChange={(e) => set("season", e.target.value)} className={sel}>
+            {seasons.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </label>
       </div>
 
       {/* game state */}
