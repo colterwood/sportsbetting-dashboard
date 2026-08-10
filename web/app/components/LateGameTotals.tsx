@@ -2,11 +2,13 @@ import {
   getLateGameSeasons,
   getLateGameTeams,
   getLateGameAnchors,
+  getTeamSituation,
   type AnchorPick,
 } from "@/lib/queries";
 import { summarize, verdict, hitRate, probOver, toFloat, fmtPct, type Dist } from "@/lib/lategame";
 import { formatValue } from "@/lib/format";
 import MiniDistribution from "./MiniDistribution";
+import TeamPanel from "./TeamPanel";
 import TotalsControls, { type TotalsState } from "./TotalsControls";
 
 type SP = { [k: string]: string | string[] | undefined };
@@ -48,10 +50,13 @@ export default async function LateGameTotals({ sp }: { sp: SP }) {
   const leader = ld === "b" ? b : a;
   const trailer = ld === "b" ? a : b;
 
-  // team list (for the picker) + comparable spots in parallel, not back-to-back
-  const [teams, rows] = await Promise.all([
+  // team list (for the picker) + comparable spots + team situational profiles, all
+  // in parallel, not back-to-back (getTeamSituation returns [] without a query
+  // when no matchup is set)
+  const [teams, rows, situationRows] = await Promise.all([
     getLateGameTeams(season),
     getLateGameAnchors(season, half, secsLeft, diffLo, diffHi),
+    getTeamSituation(a && b ? [a, b] : []),
   ]);
   const totalVals = rows.map((r) => r.total_pts_after);
   const leadVals = rows.flatMap((r) => (r.lead_pts_after != null ? [r.lead_pts_after] : []));
@@ -93,6 +98,20 @@ export default async function LateGameTotals({ sp }: { sp: SP }) {
           <OutcomeCard title={`${leader || "Leader"} total`} caption="Leading team · rest of half" dist={leadDist} values={leadVals} lineStr={st.lt} />
           <OutcomeCard title={`${trailer || "Trailer"} total`} caption="Trailing team · rest of half" dist={trailDist} values={trailVals} lineStr={st.tt} />
         </div>
+      )}
+
+      {a && b && (
+        <TeamPanel
+          a={a}
+          b={b}
+          leader={leader}
+          trailer={trailer}
+          state={{ half, m, s, by }}
+          rows={situationRows}
+          dists={{ total: totalDist, lead: leadDist, trail: trailDist }}
+          values={{ total: totalVals, lead: leadVals, trail: trailVals }}
+          lines={{ gt: st.gt, lt: st.lt, tt: st.tt }}
+        />
       )}
 
       {rows.length > 0 && <Comparables rows={rows} leader={leader} trailer={trailer} />}

@@ -492,6 +492,39 @@ export const getLateGameAnchors = cached(
   "lategame",
 );
 
+// Team-conditioned situational profiles (built by the PBP pipeline). One row per
+// (season, team, role, window, margin band); columns are ACCUMULATORS — divide by
+// `minutes` for per-minute rates. Tiny table, so we fetch every season for the two
+// teams and blend/fall back in JS (lib/lategame.ts teamRates).
+export type TeamSituationRow = {
+  season: number;
+  team: string;
+  role: string; // 'lead' | 'trail' — state at window start
+  window_key: string; // 'h1_0_240' | 'h2_240_480' | 'h2_120_240' | 'h2_0_120'
+  margin_band: string; // '1_3' | '4_6' | '7_12' | '13p'
+  games: number;
+  minutes: number;
+  pts_for: number;
+  pts_against: number;
+  poss: number;
+  fouls_committed: number;
+  fta: number;
+  ftm: number;
+};
+
+export const getTeamSituation = cached(
+  async (teams: string[]): Promise<TeamSituationRow[]> => {
+    if (teams.length === 0) return [];
+    return sql<TeamSituationRow[]>`
+      select season, team, role, window_key, margin_band, games, minutes,
+             pts_for, pts_against, poss, fouls_committed, fta, ftm
+      from ncaam_team_situation
+      where team = any(${teams})`;
+  },
+  "getTeamSituation",
+  "lategame",
+);
+
 // FUTURE, SCHEDULED dates only — this drives the NCAAB "Upcoming" dropdown, which
 // must never show finished games (you can't bet a final). Season-agnostic on
 // purpose: "upcoming" is defined by date + status, not by the season the historical

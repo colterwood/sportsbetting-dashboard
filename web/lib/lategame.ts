@@ -8,6 +8,7 @@
 // outcomes usually clear it -> OVER edge, and vice-versa).
 
 import { probOver as probOverT } from "./tdist";
+import type { TeamSituationRow } from "./queries";
 
 export type Bin = { lo: number; hi: number; count: number };
 export type Dist = {
@@ -135,7 +136,16 @@ export type Verdict = {
  * over/under (this isn't a team good/bad axis).
  */
 export function verdict(line: number, d: Dist, values: number[]): Verdict {
-  const overProb = probOver(line, d);
+  return verdictAt(line, d.mean, d, values);
+}
+
+/**
+ * verdict() with an OVERRIDING mean (e.g. the team-adjusted expectation) while
+ * keeping the sample's spread: SE and degrees of freedom still come from `d`.
+ * `values` is the same historical sample, used only for the line's percentile.
+ */
+export function verdictAt(line: number, mean: number, d: Dist, values: number[]): Verdict {
+  const overProb = probOverT(line, mean, predictiveSE(d), Math.max(1, d.n - 1));
   const side: "over" | "under" = overProb >= 0.5 ? "over" : "under";
   const edge = Math.abs(overProb - 0.5);
   const strength = edge >= 0.3 ? "strong" : edge >= 0.18 ? "lean" : "none";
@@ -152,4 +162,184 @@ export function verdict(line: number, d: Dist, values: number[]): Verdict {
 
 export function fmtPct(p: number): string {
   return Number.isFinite(p) ? `${Math.round(p)}%` : "—";
+}
+
+// ---- team-conditioned layer ----------------------------------------------
+// The league distribution answers "what usually happens from this state"; the
+// functions below tilt that toward HOW THESE TWO TEAMS play the state, using the
+// ncaam_team_situation profiles (per-window/per-margin-band accumulators).
+
+export type WindowKey = "h1_0_240" | "h2_240_480" | "h2_120_240" | "h2_0_120";
+export type MarginBand = "1_3" | "4_6" | "7_12" | "13p";
+
+/** Margin-band chain, in order — used for nearest-first widening. */
+const BANDS: MarginBand[] = ["1_3", "4_6", "7_12", "13p"];
+
+/**
+ * Snap a game state to its profile window. Half 1 has a single late window
+ * (final 4:00); half 2 splits into 4:00–8:00, 2:00–4:00, and the final 2:00.
+ * Seconds beyond 8:00 in the 2nd half clamp to the outermost window.
+ */
+export function snapWindow(half: 1 | 2, secsLeftInHalf: number): WindowKey {
+  if (half === 1) return "h1_0_240";
+  if (secsLeftInHalf <= 120) return "h2_0_120";
+  if (secsLeftInHalf <= 240) return "h2_120_240";
+  return "h2_240_480"; // includes clamp beyond 480
+}
+
+/** Snap a lead margin to its profile band. */
+export function snapBand(by: number): MarginBand {
+  if (by <= 3) return "1_3";
+  if (by <= 6) return "4_6";
+  if (by <= 12) return "7_12";
+  return "13p";
+}
+
+export type TeamRates = {
+  ptsForPerMin: number;
+  ptsAgainstPerMin: number;
+  possPerMin: number;
+  foulsPerMin: number;
+  ftaPerMin: number;
+  ftPct: number;
+  gamesCur: number; // games in the most recent season present
+  gamesPrev: number; // games in the season before that (0 if none)
+  seasonCur: number;
+  seasonPrev: number | null;
+  fallback: "exact" | "band_widened" | "window_any_band";
+};
+
+/** Sum one season's rows into per-minute rates (accumulator / minutes). */
+function seasonRates(rows: TeamSituationRow[]) {
+  const sum = (f: (r: TeamSituationRow) => number) => rows.reduce((s, r) => s + f(r), 0);
+  const minutes = sum((r) => r.minutes);
+  const fta = sum((r) => r.fta);
+  const per = (v: number) => (minutes > 0 ? v / minutes : 0);
+  return {
+    games: sum((r) => r.games),
+    ptsFor: per(sum((r) => r.pts_for)),
+    ptsAgainst: per(sum((r) => r.pts_against)),
+    poss: per(sum((r) => r.poss)),
+    fouls: per(sum((r) => r.fouls_committed)),
+    fta: per(fta),
+    ftPct: fta > 0 ? sum((r) => r.ftm) / fta : null,
+  };
+}
+
+/**
+ * One team's per-minute rates for a (role, window, margin-band) state, blended
+ * across the two most recent seasons with data. If the exact band has no rows,
+ * widen nearest-first: pool the band with its immediate neighbours in the
+ * 1_3<->4_6<->7_12<->13p chain ("band_widened"), then every band in the window
+ * ("window_any_band"). Season blend: wPrev = 15 / (15 + gamesCur) on the
+ * PER-MINUTE rates (a ~15-game prior — early-season reads lean on last year);
+ * a single season of data is used alone. Returns null if the team has no rows
+ * for this role+window at all.
+ */
+export function teamRates(
+  rows: TeamSituationRow[],
+  team: string,
+  role: "lead" | "trail",
+  windowKey: WindowKey,
+  band: MarginBand,
+): TeamRates | null {
+  const windowRows = rows.filter(
+    (r) => r.team === team && r.role === role && r.window_key === windowKey,
+  );
+  if (windowRows.length === 0) return null;
+
+  let matched = windowRows.filter((r) => r.margin_band === band);
+  let fallback: TeamRates["fallback"] = "exact";
+  if (matched.length === 0) {
+    const i = BANDS.indexOf(band);
+    const near = new Set<string>([band, ...BANDS.slice(Math.max(0, i - 1), i + 2)]);
+    matched = windowRows.filter((r) => near.has(r.margin_band));
+    fallback = "band_widened";
+  }
+  if (matched.length === 0) {
+    matched = windowRows;
+    fallback = "window_any_band";
+  }
+
+  // Blend the two most recent seasons among the matches.
+  const seasons = [...new Set(matched.map((r) => r.season))].sort((a, b) => b - a);
+  const seasonCur = seasons[0];
+  const seasonPrev = seasons[1] ?? null;
+  const cur = seasonRates(matched.filter((r) => r.season === seasonCur));
+  const prev = seasonPrev != null ? seasonRates(matched.filter((r) => r.season === seasonPrev)) : null;
+
+  const wPrev = prev ? 15 / (15 + cur.games) : 0;
+  const mix = (c: number, p: number | undefined) => (prev && p != null ? (1 - wPrev) * c + wPrev * p : c);
+  // FT% blends the same way but either season can lack attempts (guard fta 0).
+  const ftPct =
+    cur.ftPct != null && prev?.ftPct != null
+      ? (1 - wPrev) * cur.ftPct + wPrev * prev.ftPct
+      : (cur.ftPct ?? prev?.ftPct ?? 0);
+
+  return {
+    ptsForPerMin: mix(cur.ptsFor, prev?.ptsFor),
+    ptsAgainstPerMin: mix(cur.ptsAgainst, prev?.ptsAgainst),
+    possPerMin: mix(cur.poss, prev?.poss),
+    foulsPerMin: mix(cur.fouls, prev?.fouls),
+    ftaPerMin: mix(cur.fta, prev?.fta),
+    ftPct,
+    gamesCur: cur.games,
+    gamesPrev: prev?.games ?? 0,
+    seasonCur,
+    seasonPrev,
+    fallback,
+  };
+}
+
+/**
+ * Blend the league-conditional means with the two teams' situational rates.
+ * Team expectation for the leader's points = the average of "what the leader
+ * scores per minute in this state" and "what the trailer allows per minute",
+ * times the minutes left (trailer symmetric; game total = the two summed).
+ * A missing side falls back to the other alone; both missing = pure league.
+ * Where team data exists each outcome is 0.8 team + 0.2 league; `teamShare`
+ * reports the weight actually used for the game total, `notes` explains any
+ * fallback in plain language.
+ */
+export function blendOutcomes(args: {
+  minutesLeft: number;
+  league: { total: number; lead: number; trail: number };
+  leader: TeamRates | null;
+  trailer: TeamRates | null;
+}): { total: number; lead: number; trail: number; teamShare: number; notes: string[] } {
+  const { minutesLeft, league, leader, trailer } = args;
+  const TEAM_W = 0.8;
+  const notes: string[] = [];
+
+  // pts/min expectation for one side, from its offense and the opponent's defense
+  const sideRate = (off: TeamRates | null, def: TeamRates | null): number | null => {
+    if (off && def) return 0.5 * (off.ptsForPerMin + def.ptsAgainstPerMin);
+    if (off) return off.ptsForPerMin;
+    if (def) return def.ptsAgainstPerMin;
+    return null;
+  };
+
+  const leadRate = sideRate(leader, trailer);
+  const trailRate = sideRate(trailer, leader);
+
+  const blendOne = (rate: number | null, leagueMean: number): number =>
+    rate == null ? leagueMean : TEAM_W * rate * minutesLeft + (1 - TEAM_W) * leagueMean;
+
+  const lead = blendOne(leadRate, league.lead);
+  const trail = blendOne(trailRate, league.trail);
+  const total =
+    leadRate == null && trailRate == null
+      ? league.total
+      : TEAM_W * ((leadRate ?? 0) + (trailRate ?? 0)) * minutesLeft + (1 - TEAM_W) * league.total;
+  const teamShare = leadRate == null && trailRate == null ? 0 : TEAM_W;
+
+  if (!leader && trailer) notes.push("No profile for the leading team in this spot — using the trailing team's rates alone.");
+  if (!trailer && leader) notes.push("No profile for the trailing team in this spot — using the leading team's rates alone.");
+  if (!leader && !trailer) notes.push("Neither team has history in this situation — showing the league-wide numbers.");
+  if (leader?.fallback === "band_widened") notes.push("Thin data for the leader at this exact margin — nearby margins included.");
+  if (leader?.fallback === "window_any_band") notes.push("Very thin data for the leader — all margins in this time window included.");
+  if (trailer?.fallback === "band_widened") notes.push("Thin data for the trailer at this exact margin — nearby margins included.");
+  if (trailer?.fallback === "window_any_band") notes.push("Very thin data for the trailer — all margins in this time window included.");
+
+  return { total, lead, trail, teamShare, notes };
 }
