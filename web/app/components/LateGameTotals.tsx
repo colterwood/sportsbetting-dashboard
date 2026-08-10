@@ -94,6 +94,23 @@ export default async function LateGameTotals({ sp }: { sp: SP }) {
       : null;
   const adjusted = blend != null && blend.teamShare > 0;
 
+  // The cards' empirical rows are TEAM-scoped when adjusted (the user's rule: the
+  // edge comes from the teams): each team's own outcomes among the comparable
+  // spots, and for the game total any spot involving either team. League-wide
+  // versions live in the reference section below.
+  const involved = (r: AnchorPick) =>
+    r.leading_team === leader || r.trailing_team === leader ||
+    r.leading_team === trailer || r.trailing_team === trailer;
+  const leaderSpots = adjusted
+    ? rows.filter((r) => r.leading_team === leader)
+        .flatMap((r) => (r.lead_pts_after != null ? [r.lead_pts_after] : []))
+    : null;
+  const trailerSpots = adjusted
+    ? rows.filter((r) => r.trailing_team === trailer)
+        .flatMap((r) => (r.trail_pts_after != null ? [r.trail_pts_after] : []))
+    : null;
+  const matchupSpots = adjusted ? rows.filter(involved).map((r) => r.total_pts_after) : null;
+
   const stateLine =
     `${half === 1 ? "1st" : "2nd"} half · ${m}:${String(s).padStart(2, "0")} left · ` +
     `${leader || "leader"} leading by ~${by}`;
@@ -127,11 +144,11 @@ export default async function LateGameTotals({ sp }: { sp: SP }) {
       ) : (
         <div className="grid gap-3 sm:grid-cols-3">
           <OutcomeCard title="Game total" caption="Both teams · rest of half" dist={totalDist} values={totalVals}
-            lineStr={st.gt} adjMean={adjusted ? blend!.total : null} />
+            lineStr={st.gt} adjMean={adjusted ? blend!.total : null} scope="Matchup" teamVals={matchupSpots} />
           <OutcomeCard title={`${leader || "Leader"} total`} caption="Leading team · rest of half" dist={leadDist}
-            values={leadVals} lineStr={st.lt} adjMean={adjusted ? blend!.lead : null} />
+            values={leadVals} lineStr={st.lt} adjMean={adjusted ? blend!.lead : null} scope="Team" teamVals={leaderSpots} />
           <OutcomeCard title={`${trailer || "Trailer"} total`} caption="Trailing team · rest of half" dist={trailDist}
-            values={trailVals} lineStr={st.tt} adjMean={adjusted ? blend!.trail : null} />
+            values={trailVals} lineStr={st.tt} adjMean={adjusted ? blend!.trail : null} scope="Team" teamVals={trailerSpots} />
         </div>
       )}
 
@@ -166,11 +183,13 @@ export default async function LateGameTotals({ sp }: { sp: SP }) {
 
 // The primary outcome card. With `adjMean` (team-adjusted expectation) the verdict,
 // model odds, and dashed center line all use the ADJUSTED mean — the league sample
-// only contributes the distribution's shape/spread. Without it (no matchup or no
-// team history) it behaves as the plain league-wide card.
-function OutcomeCard({ title, caption, dist, values, lineStr, adjMean }: {
+// only contributes the distribution's shape/spread — and the empirical rows come
+// from `teamVals`: this team's (or either team's, scope "Matchup") own outcomes
+// among the comparable spots, n shown. Without adjMean (no matchup or no team
+// history) it behaves as the plain league-wide card.
+function OutcomeCard({ title, caption, dist, values, lineStr, adjMean, scope, teamVals }: {
   title: string; caption: string; dist: Dist | null; values: number[]; lineStr: string;
-  adjMean: number | null;
+  adjMean: number | null; scope: "Team" | "Matchup"; teamVals: number[] | null;
 }) {
   if (!dist) {
     return (
@@ -210,11 +229,14 @@ function OutcomeCard({ title, caption, dist, values, lineStr, adjMean }: {
         {v != null && (
           <Row k="Model" val={`${fmtPct(v.overProb * 100)} over · ${fmtPct((1 - v.overProb) * 100)} under`} accent={adjMean == null} />
         )}
-        <Row k={adjMean != null ? "League median" : "Typical (median)"} val={`${formatValue("pts", dist.p50)} pts`} />
-        <Row k={adjMean != null ? "League mean ± SD" : "Mean ± SD"} val={`${formatValue("pts", dist.mean)} ± ${formatValue("pts", dist.sd)}`} />
-        {hr != null && (
-          <Row k={adjMean != null ? "League hit rate" : "Hit rate"}
-            val={`${hr.over}/${hr.n} over (${fmtPct((hr.over / hr.n) * 100)})`} />
+        {adjMean != null && teamVals != null ? (
+          <TeamRows scope={scope} vals={teamVals} line={line} />
+        ) : (
+          <>
+            <Row k="Typical (median)" val={`${formatValue("pts", dist.p50)} pts`} />
+            <Row k="Mean ± SD" val={`${formatValue("pts", dist.mean)} ± ${formatValue("pts", dist.sd)}`} />
+            {hr != null && <Row k="Hit rate" val={`${hr.over}/${hr.n} over (${fmtPct((hr.over / hr.n) * 100)})`} />}
+          </>
         )}
       </dl>
     </div>
@@ -245,6 +267,27 @@ function LeagueCard({ title, dist, values, lineStr }: {
         {hr != null && <Row k="Hit rate" val={`${hr.over}/${hr.n} over (${fmtPct((hr.over / hr.n) * 100)})`} />}
       </dl>
     </div>
+  );
+}
+
+// Empirical rows from the team's/matchup's OWN comparable spots. These are honest
+// team numbers (they change with the matchup) — never league stats relabeled. The
+// spot count is always visible so a thin sample can't masquerade as a solid one.
+function TeamRows({ scope, vals, line }: { scope: "Team" | "Matchup"; vals: number[]; line: number | null }) {
+  if (vals.length === 0) {
+    return <Row k={`${scope} spots`} val="none in this state" />;
+  }
+  const d = summarize(vals)!;
+  const hr = line != null ? hitRate(vals, line) : null;
+  const spread = vals.length > 1
+    ? `${formatValue("pts", d.mean)} ± ${formatValue("pts", d.sd)}`
+    : `${formatValue("pts", d.mean)} (1 spot)`;
+  return (
+    <>
+      <Row k={`${scope} median · ${vals.length} spot${vals.length === 1 ? "" : "s"}`} val={`${formatValue("pts", d.p50)} pts`} />
+      <Row k={`${scope} mean ± SD`} val={spread} />
+      {hr != null && <Row k={`${scope} hit rate`} val={`${hr.over}/${hr.n} over (${fmtPct((hr.over / hr.n) * 100)})`} />}
+    </>
   );
 }
 
