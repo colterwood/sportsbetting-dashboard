@@ -5,7 +5,10 @@ import {
   getTeamSituation,
   type AnchorPick,
 } from "@/lib/queries";
-import { summarize, verdict, hitRate, probOver, toFloat, fmtPct, type Dist } from "@/lib/lategame";
+import {
+  summarize, verdictAt, hitRate, toFloat, fmtPct, snapWindow, snapBand, teamRates,
+  blendOutcomes, type Dist,
+} from "@/lib/lategame";
 import { formatValue } from "@/lib/format";
 import MiniDistribution from "./MiniDistribution";
 import TeamPanel from "./TeamPanel";
@@ -17,8 +20,12 @@ const DIFF_HALF_WIDTH = 1; // bucket the entered margin as [by-1, by+1] (3-wide)
 const clampi = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 // The NCAAB late-game totals OUTLIER tool: manual game state + a line -> where the
-// line falls in the conditional "points-from-here" distribution. Embedded in the
-// NCAAB Live / Upcoming views; reads its state from the page's search params.
+// line falls in the conditional "points-from-here" distribution. VISUAL HIERARCHY
+// (the user's explicit spec): the TOP cards carry the TEAM-ADJUSTED numbers — the
+// edge comes from the teams — with the single authoritative verdict; the team
+// profiles explain them; the raw league-wide reference sits below WITHOUT verdict
+// badges so the page never argues with itself. Embedded in the NCAAB Live /
+// Upcoming views; reads its state from the page's search params.
 export default async function LateGameTotals({ sp }: { sp: SP }) {
   const q = (k: string) => {
     const v = sp[k];
@@ -65,6 +72,28 @@ export default async function LateGameTotals({ sp }: { sp: SP }) {
   const leadDist = summarize(leadVals);
   const trailDist = summarize(trailVals);
 
+  // Team-conditioned layer: rates for each side in the snapped situation family,
+  // blended into the league means (hard 80/20). When neither team has history the
+  // blend is null and the top cards fall back to pure league-wide.
+  const windowKey = snapWindow(half, m * 60 + s);
+  const band = snapBand(by);
+  const leaderRates = a && b ? teamRates(situationRows, leader, "lead", windowKey, band) : null;
+  const trailerRates = a && b ? teamRates(situationRows, trailer, "trail", windowKey, band) : null;
+  const blend =
+    leaderRates || trailerRates
+      ? blendOutcomes({
+          minutesLeft: (m * 60 + s) / 60,
+          league: {
+            total: totalDist?.mean ?? 0,
+            lead: leadDist?.mean ?? 0,
+            trail: trailDist?.mean ?? 0,
+          },
+          leader: leaderRates,
+          trailer: trailerRates,
+        })
+      : null;
+  const adjusted = blend != null && blend.teamShare > 0;
+
   const stateLine =
     `${half === 1 ? "1st" : "2nd"} half · ${m}:${String(s).padStart(2, "0")} left · ` +
     `${leader || "leader"} leading by ~${by}`;
@@ -88,30 +117,46 @@ export default async function LateGameTotals({ sp }: { sp: SP }) {
         <span className="ml-2 text-xs text-slate-500">
           ({rows.length} comparable spots · margin {diffLo}–{diffHi})
         </span>
+        <span className="ml-2 text-xs text-sky-300/80">
+          {adjusted ? "adjusted to these teams · 80% team, 20% league" : a && b ? "league-wide (no team history here)" : ""}
+        </span>
       </div>
 
       {rows.length === 0 ? (
         <Empty msg="No comparable historical spots for this exact state — widen the time or margin." />
       ) : (
         <div className="grid gap-3 sm:grid-cols-3">
-          <OutcomeCard title="Game total" caption="Both teams · rest of half" dist={totalDist} values={totalVals} lineStr={st.gt} />
-          <OutcomeCard title={`${leader || "Leader"} total`} caption="Leading team · rest of half" dist={leadDist} values={leadVals} lineStr={st.lt} />
-          <OutcomeCard title={`${trailer || "Trailer"} total`} caption="Trailing team · rest of half" dist={trailDist} values={trailVals} lineStr={st.tt} />
+          <OutcomeCard title="Game total" caption="Both teams · rest of half" dist={totalDist} values={totalVals}
+            lineStr={st.gt} adjMean={adjusted ? blend!.total : null} />
+          <OutcomeCard title={`${leader || "Leader"} total`} caption="Leading team · rest of half" dist={leadDist}
+            values={leadVals} lineStr={st.lt} adjMean={adjusted ? blend!.lead : null} />
+          <OutcomeCard title={`${trailer || "Trailer"} total`} caption="Trailing team · rest of half" dist={trailDist}
+            values={trailVals} lineStr={st.tt} adjMean={adjusted ? blend!.trail : null} />
         </div>
       )}
 
       {a && b && (
         <TeamPanel
-          a={a}
-          b={b}
-          leader={leader}
-          trailer={trailer}
-          state={{ half, m, s, by }}
-          rows={situationRows}
-          dists={{ total: totalDist, lead: leadDist, trail: trailDist }}
-          values={{ total: totalVals, lead: leadVals, trail: trailVals }}
-          lines={{ gt: st.gt, lt: st.lt, tt: st.tt }}
+          a={a} b={b} leader={leader} trailer={trailer}
+          windowKey={windowKey} band={band}
+          leaderRates={leaderRates} trailerRates={trailerRates}
+          notes={blend?.notes ?? []}
         />
+      )}
+
+      {/* raw league-wide reference — deliberately NO verdict badges here: the one
+          verdict lives on the team-adjusted cards above */}
+      {adjusted && rows.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+            League-wide reference · {rows.length} comparable games, any teams
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <LeagueCard title="Game total" dist={totalDist} values={totalVals} lineStr={st.gt} />
+            <LeagueCard title="Leader total" dist={leadDist} values={leadVals} lineStr={st.lt} />
+            <LeagueCard title="Trailer total" dist={trailDist} values={trailVals} lineStr={st.tt} />
+          </div>
+        </section>
       )}
 
       {rows.length > 0 && <Comparables rows={rows} leader={leader} trailer={trailer} />}
@@ -119,8 +164,13 @@ export default async function LateGameTotals({ sp }: { sp: SP }) {
   );
 }
 
-function OutcomeCard({ title, caption, dist, values, lineStr }: {
+// The primary outcome card. With `adjMean` (team-adjusted expectation) the verdict,
+// model odds, and dashed center line all use the ADJUSTED mean — the league sample
+// only contributes the distribution's shape/spread. Without it (no matchup or no
+// team history) it behaves as the plain league-wide card.
+function OutcomeCard({ title, caption, dist, values, lineStr, adjMean }: {
   title: string; caption: string; dist: Dist | null; values: number[]; lineStr: string;
+  adjMean: number | null;
 }) {
   if (!dist) {
     return (
@@ -131,9 +181,9 @@ function OutcomeCard({ title, caption, dist, values, lineStr }: {
     );
   }
   const line = toFloat(lineStr);
-  const v = line != null ? verdict(line, dist, values) : null;
+  const mean = adjMean ?? dist.mean;
+  const v = line != null ? verdictAt(line, mean, dist, values) : null;
   const hr = line != null ? hitRate(values, line) : null;
-  const over = line != null ? probOver(line, dist) : null;
   const markerColor = !v ? "#94a3b8" : v.strength === "strong" ? "#34d399" : v.strength === "lean" ? "#fbbf24" : "#94a3b8";
 
   return (
@@ -148,17 +198,50 @@ function OutcomeCard({ title, caption, dist, values, lineStr }: {
 
       <div className="mt-2">
         <MiniDistribution
-          histogram={dist.histogram} mean={dist.mean} median={dist.p50}
+          histogram={dist.histogram} mean={mean} median={dist.p50}
           valMin={dist.min} valMax={dist.max}
-          value={line ?? dist.p50} unit="pts" color={markerColor}
-          caption={line != null ? `O/U ${line}` : `median ${formatValue("pts", dist.p50)}`}
+          value={line ?? mean} unit="pts" color={markerColor}
+          caption={line != null ? `O/U ${line}` : adjMean != null ? `adjusted ${formatValue("pts", mean)}` : `median ${formatValue("pts", dist.p50)}`}
         />
       </div>
 
       <dl className="mt-2 space-y-1 text-xs">
-        <Row k="Typical (median)" val={`${formatValue("pts", dist.p50)} pts`} />
+        {adjMean != null && <Row k="These teams (expected)" val={`${formatValue("pts", adjMean)} pts`} accent />}
+        {v != null && (
+          <Row k="Model" val={`${fmtPct(v.overProb * 100)} over · ${fmtPct((1 - v.overProb) * 100)} under`} accent={adjMean == null} />
+        )}
+        <Row k={adjMean != null ? "League median" : "Typical (median)"} val={`${formatValue("pts", dist.p50)} pts`} />
+        <Row k={adjMean != null ? "League mean ± SD" : "Mean ± SD"} val={`${formatValue("pts", dist.mean)} ± ${formatValue("pts", dist.sd)}`} />
+        {hr != null && (
+          <Row k={adjMean != null ? "League hit rate" : "Hit rate"}
+            val={`${hr.over}/${hr.n} over (${fmtPct((hr.over / hr.n) * 100)})`} />
+        )}
+      </dl>
+    </div>
+  );
+}
+
+// Compact league-wide reference card: shape + stats only, deliberately no verdict.
+function LeagueCard({ title, dist, values, lineStr }: {
+  title: string; dist: Dist | null; values: number[]; lineStr: string;
+}) {
+  if (!dist) return null;
+  const line = toFloat(lineStr);
+  const hr = line != null ? hitRate(values, line) : null;
+  return (
+    <div className="rounded-xl border border-slate-800/70 bg-slate-900/20 p-3">
+      <div className="truncate text-xs font-medium text-slate-400">{title}</div>
+      <div className="mt-2">
+        <MiniDistribution
+          histogram={dist.histogram} mean={dist.mean} median={dist.p50}
+          valMin={dist.min} valMax={dist.max}
+          value={line ?? dist.p50} unit="pts" color="#64748b"
+          caption={line != null ? `O/U ${line}` : `median ${formatValue("pts", dist.p50)}`}
+        />
+      </div>
+      <dl className="mt-2 space-y-1 text-[11px]">
+        <Row k="Median" val={`${formatValue("pts", dist.p50)} pts`} />
         <Row k="Mean ± SD" val={`${formatValue("pts", dist.mean)} ± ${formatValue("pts", dist.sd)}`} />
-        {over != null && <Row k="Model" val={`${fmtPct(over * 100)} over · ${fmtPct((1 - over) * 100)} under`} accent />}
         {hr != null && <Row k="Hit rate" val={`${hr.over}/${hr.n} over (${fmtPct((hr.over / hr.n) * 100)})`} />}
       </dl>
     </div>

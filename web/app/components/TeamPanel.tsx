@@ -1,20 +1,12 @@
-import type { TeamSituationRow } from "@/lib/queries";
 import {
-  snapWindow,
-  snapBand,
-  teamRates,
-  blendOutcomes,
-  verdictAt,
-  toFloat,
-  type Dist,
   type TeamRates,
   type WindowKey,
   type MarginBand,
 } from "@/lib/lategame";
 
-// Team-conditioned layer under the league-wide outcome cards: how THESE two teams
-// have played this exact situation (role x time window x margin band), and the
-// league means tilted 80/20 toward their rates. Pure server component — no client JS.
+// The two teams' situational profiles — the EVIDENCE behind the team-adjusted
+// numbers on the outcome cards above (which carry the one authoritative verdict;
+// this panel explains, it doesn't re-judge). Pure server component — no client JS.
 
 const BAND_TEXT: Record<MarginBand, string> = {
   "1_3": "1–3 point",
@@ -35,31 +27,26 @@ export default function TeamPanel({
   b,
   leader,
   trailer,
-  state,
-  rows,
-  dists,
-  values,
-  lines,
+  windowKey,
+  band,
+  leaderRates,
+  trailerRates,
+  notes,
 }: {
   a: string;
   b: string;
   leader: string;
   trailer: string;
-  state: { half: 1 | 2; m: number; s: number; by: number };
-  rows: TeamSituationRow[];
-  dists: { total: Dist | null; lead: Dist | null; trail: Dist | null };
-  values: { total: number[]; lead: number[]; trail: number[] };
-  lines: { gt: string; lt: string; tt: string };
+  windowKey: WindowKey;
+  band: MarginBand;
+  leaderRates: TeamRates | null;
+  trailerRates: TeamRates | null;
+  notes: string[];
 }) {
-  const windowKey = snapWindow(state.half, state.m * 60 + state.s);
-  const band = snapBand(state.by);
-  const leaderRates = teamRates(rows, leader, "lead", windowKey, band);
-  const trailerRates = teamRates(rows, trailer, "trail", windowKey, band);
-
   if (!leaderRates && !trailerRates) {
     return (
       <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-3 text-sm text-slate-500">
-        No team-specific history for these teams in this situation yet — showing league-wide only.
+        No team-specific history for these teams in this situation yet — the cards above show league-wide numbers.
       </div>
     );
   }
@@ -68,21 +55,8 @@ export default function TeamPanel({
     (leaderRates && leaderRates.fallback !== "exact") ||
     (trailerRates && trailerRates.fallback !== "exact");
   const situation =
-    `profiles from games with a ${BAND_TEXT[band]} lead in ${WINDOW_TEXT[windowKey]}` +
+    `the numbers above are tilted 80% toward these profiles — from games with a ${BAND_TEXT[band]} lead in ${WINDOW_TEXT[windowKey]}` +
     (widened ? " (widened to nearby margins where data is thin)" : "");
-
-  const minutesLeft = (state.m * 60 + state.s) / 60;
-  const anyDist = dists.total != null || dists.lead != null || dists.trail != null;
-  const blend = blendOutcomes({
-    minutesLeft,
-    league: {
-      total: dists.total?.mean ?? 0,
-      lead: dists.lead?.mean ?? 0,
-      trail: dists.trail?.mean ?? 0,
-    },
-    leader: leaderRates,
-    trailer: trailerRates,
-  });
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/30 p-3">
@@ -96,35 +70,12 @@ export default function TeamPanel({
         <ProfileCard team={trailer || b} role="trailing" rates={trailerRates} />
       </div>
 
-      {anyDist && (
-      <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <div className="text-sm font-semibold text-slate-200">Team-adjusted</div>
-          <div className="text-[11px] text-slate-500">
-            {blend.teamShare > 0
-              ? `${Math.round(blend.teamShare * 100)}% these teams · ${Math.round((1 - blend.teamShare) * 100)}% league`
-              : "league-wide only"}
-          </div>
-        </div>
-        <div className="mt-2 space-y-1.5">
-          {dists.total && (
-            <AdjRow title="Game total" mean={blend.total} dist={dists.total} vals={values.total} lineStr={lines.gt} />
-          )}
-          {dists.lead && (
-            <AdjRow title={`${leader || "Leader"} total`} mean={blend.lead} dist={dists.lead} vals={values.lead} lineStr={lines.lt} />
-          )}
-          {dists.trail && (
-            <AdjRow title={`${trailer || "Trailer"} total`} mean={blend.trail} dist={dists.trail} vals={values.trail} lineStr={lines.tt} />
-          )}
-        </div>
-        {blend.notes.length > 0 && (
-          <ul className="mt-2 space-y-0.5 text-[11px] text-slate-500">
-            {blend.notes.map((n) => (
-              <li key={n}>{n}</li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {notes.length > 0 && (
+        <ul className="space-y-0.5 text-[11px] text-slate-500">
+          {notes.map((n) => (
+            <li key={n}>{n}</li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -162,26 +113,6 @@ function StatRow({ k, val }: { k: string; val: string }) {
     <div className="flex items-baseline justify-between gap-2">
       <dt className="text-slate-500">{k}</dt>
       <dd className="tabular-nums text-slate-300">{val}</dd>
-    </div>
-  );
-}
-
-function AdjRow({ title, mean, dist, vals, lineStr }: {
-  title: string; mean: number; dist: Dist; vals: number[]; lineStr: string;
-}) {
-  const line = toFloat(lineStr);
-  const v = line != null ? verdictAt(line, mean, dist, vals) : null;
-  return (
-    <div className="flex items-center justify-between gap-2 text-xs">
-      <span className="min-w-0 truncate text-slate-400">{title}</span>
-      <span className="flex shrink-0 items-center gap-2">
-        <span className="tabular-nums font-semibold text-slate-100">{mean.toFixed(1)} pts</span>
-        {v && (
-          <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${v.cls}`}>
-            {v.label}
-          </span>
-        )}
-      </span>
     </div>
   );
 }
