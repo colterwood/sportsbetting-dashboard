@@ -79,7 +79,9 @@ function Rows({
             <tr key={t.team} className={t.is_tail ? "bg-slate-800/30" : undefined}>
               <td className="px-2 py-1.5 tabular-nums text-slate-500">{t.rank ?? "—"}</td>
               <td className="px-2 py-1.5">
-                <Link href={teamHref(league, season, t.team)} className="text-slate-100 hover:text-sky-400">
+                {/* prefetch off: this table renders up to ~600 team links — viewport
+                    prefetch would stampede the serverless functions + DB */}
+                <Link href={teamHref(league, season, t.team)} prefetch={false} className="text-slate-100 hover:text-sky-400">
                   {t.team}
                 </Link>
                 {t.low_sample && <span className="ml-1 text-[10px] text-amber-500/80">low n</span>}

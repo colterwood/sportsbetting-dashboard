@@ -80,11 +80,15 @@ export default async function ExplorePage({ searchParams }: { searchParams: SP }
 
       {dist ? (
         <>
-          <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-3">
-            <DistributionCurve dist={dist} teams={teams} unit={meta.unit} higherIs={meta.higher_is} />
-            <Legend />
+          {/* On wide screens the curve and the line tool sit side by side; the full
+              ranking table spans the width below. On phones it all stacks. */}
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-3 xl:col-span-2">
+              <DistributionCurve dist={dist} teams={teams} unit={meta.unit} higherIs={meta.higher_is} />
+              <Legend />
+            </div>
+            <PercentileTool histogram={dist.histogram} unit={meta.unit} />
           </div>
-          <PercentileTool histogram={dist.histogram} unit={meta.unit} />
           <TailTable teams={teams} unit={meta.unit} higherIs={meta.higher_is} league={league} season={season} />
         </>
       ) : (

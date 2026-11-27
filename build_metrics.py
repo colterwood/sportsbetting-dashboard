@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import text
 
-from db import engine_from_env
+from db import engine_from_env, revalidate
 
 ROBUST_Z = 2.0   # |modified z| (median/MAD, skew-robust) for a true-outlier "tail". Tunable.
 MIN_GAMES = 3    # a team needs this many games in the dataset to join the curve /
@@ -280,6 +280,7 @@ def build(leagues: list[str] | None = None, seasons: list[int] | None = None) ->
                   f"{len(dist_rows)} curves, {n_tail} tail flags")
 
     eng.dispose()
+    revalidate("metrics")
 
 
 def main() -> None:

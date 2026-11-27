@@ -1,0 +1,35 @@
+name: Refresh NCAAB schedule
+
+# Keeps the live site's Upcoming/Live slate + final scores current in-season. Pulls
+# the schedule from ESPN -> Supabase `game` table, then pings the deployed app to
+# purge its schedule cache. Offseason this just loads 0 games (harmless).
+#
+# NOTE: this refreshes the SCHEDULE only. The team STATS (team_metrics / ncaam_anchor)
+# are built from a local play-by-play CSV, so they can't run here yet — making the
+# stats hands-off needs the cloud ESPN play-by-play scraper (load_pbp_ncaam.py, TODO).
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_DB_URL   transaction-pooler URL (port 6543)
+#   RECOMPUTE_TOKEN   same value set in Vercel
+#   WEB_BASE_URL      https://<your-app>.vercel.app
+
+on:
+  schedule:
+    - cron: "30 11 * * *" # daily ~11:30 UTC (~6:30a ET)
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Refresh schedule (today + next 10 days)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          RECOMPUTE_TOKEN: ${{ secrets.RECOMPUTE_TOKEN }}
+          WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
+        run: python load_schedule_ncaam.py --end "$(date -u -d '+10 days' +%F)"

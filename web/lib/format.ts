@@ -12,6 +12,8 @@ export function formatValue(unit: string | null, v: number | null | undefined): 
     case "per_drive":
     case "points":
       return v.toFixed(2);
+    case "pts": // whole/half points (late-game totals) — drop trailing .0
+      return (Math.round(v * 10) / 10).toString();
     case "plays":
     case "yards":
       return v.toFixed(1);

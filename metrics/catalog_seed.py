@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import text  # noqa: E402
 
-from db import engine_from_env  # noqa: E402
+from db import engine_from_env, revalidate  # noqa: E402
 
 SPORT_ID = "football"
 
@@ -200,6 +200,7 @@ def main() -> None:
             conn.execute(_METRIC_UPSERT, {"sport_id": SPORT_ID, "agg": "ratio", "group_col": None, **m})
     eng.dispose()
     print(f"seeded {len(SITUATIONS)} situations + {len(METRICS)} metrics for sport '{SPORT_ID}'")
+    revalidate("catalog", "metrics")
 
 
 if __name__ == "__main__":

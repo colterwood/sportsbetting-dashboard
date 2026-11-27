@@ -43,6 +43,7 @@ export default async function TeamPage({
           {seasons.map((s) => (
             <Link
               key={s}
+              prefetch={false}
               href={`/team/${encodeURIComponent(league)}/${encodeURIComponent(team)}?season=${s}`}
               className={
                 s === season
